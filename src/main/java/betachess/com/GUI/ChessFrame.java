@@ -12,10 +12,9 @@ import betachess.com.gamesystem.clock.TimeControl;
 import betachess.com.gamesystem.net.ChessServer;
 import betachess.com.gamesystem.net.Protocol;
 import betachess.com.piece.PieceColor;
-import javax.swing.ButtonGroup;
-import javax.swing.JRadioButtonMenuItem;
 
 import javax.swing.BorderFactory;
+import javax.swing.ButtonGroup;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JFrame;
 import javax.swing.JMenu;
@@ -23,6 +22,7 @@ import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JRadioButtonMenuItem;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
@@ -36,10 +36,11 @@ public class ChessFrame extends JFrame implements GameView {
     private final BoardPanel    boardPanel;
     private final EvalBar       evalBar;
     private final StatusPanel   statusPanel;
+    private final OpeningPanel  openingPanel;
     private final ClockPanel    clockPanel;
     private final AnalysisPanel analysisPanel;
+    private final AccuracyPanel accuracyPanel;
     private final MoveListPanel moveListPanel;
-    private final OpeningPanel openingPanel;
 
     private GameController controller;
     private EnginePlayer   enginePlayer;
@@ -54,34 +55,51 @@ public class ChessFrame extends JFrame implements GameView {
         boardPanel    = new BoardPanel(null);
         evalBar       = new EvalBar();
         statusPanel   = new StatusPanel();
+        openingPanel  = new OpeningPanel();
         clockPanel    = new ClockPanel();
         analysisPanel = new AnalysisPanel();
+        accuracyPanel = new AccuracyPanel();
         moveListPanel = new MoveListPanel();
-        openingPanel = new OpeningPanel();
 
         clockPanel.setVisible(false);
         analysisPanel.setVisible(false);
 
         // ----- board area: eval bar on the left, board in the center ------
         JPanel boardArea = new JPanel(new BorderLayout(6, 0));
+        boardArea.setOpaque(false);
         boardArea.add(evalBar, BorderLayout.WEST);
         boardArea.add(boardPanel, BorderLayout.CENTER);
 
         JPanel boardWrapper = new JPanel(new GridBagLayout());
         boardWrapper.add(boardArea);
 
+        // ----- bottom of the side column: accuracy | move list -----------
+        JPanel accuracyWrapper = new JPanel(new BorderLayout());
+        accuracyWrapper.setOpaque(false);
+        accuracyWrapper.setPreferredSize(new Dimension(120, 0));
+        accuracyWrapper.add(accuracyPanel, BorderLayout.NORTH);
+
+        JPanel lowerRow = new JPanel(new BorderLayout(8, 0));
+        lowerRow.setOpaque(false);
+        lowerRow.add(accuracyWrapper, BorderLayout.WEST);
+        lowerRow.add(moveListPanel, BorderLayout.CENTER);
+
         // ----- side column -------------------------------------------------
         JPanel side = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridy = 0; side.add(statusPanel, gbc);
-        gbc.gridy = 1; side.add(openingPanel, gbc);   // <-- new
-        gbc.gridy = 2; side.add(clockPanel, gbc);
+        gbc.gridx = 0;
+        gbc.weightx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        gbc.gridy = 0; side.add(statusPanel,   gbc);
+        gbc.gridy = 1; side.add(openingPanel,  gbc);
+        gbc.gridy = 2; side.add(clockPanel,    gbc);
         gbc.gridy = 3; side.add(analysisPanel, gbc);
         gbc.gridy = 4;
         gbc.weighty = 1;
         gbc.fill = GridBagConstraints.BOTH;
-        side.add(moveListPanel, gbc);
-        side.setPreferredSize(new Dimension(250, 0));
+        side.add(lowerRow, gbc);
+        side.setPreferredSize(new Dimension(380, 0));
 
         JPanel content = new JPanel(new BorderLayout(8, 8));
         content.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -101,8 +119,8 @@ public class ChessFrame extends JFrame implements GameView {
 
     private JMenuBar buildMenuBar() {
         JMenuBar bar = new JMenuBar();
-        JMenu viewMenu = new JMenu("View");
 
+        // ---- Game -------------------------------------------------------
         JMenu gameMenu = new JMenu("Game");
         JMenuItem localItem = new JMenuItem("New local game...");
         localItem.addActionListener(e -> promptForNewGame());
@@ -110,32 +128,21 @@ public class ChessFrame extends JFrame implements GameView {
         hostItem.addActionListener(e -> hostGame());
         JMenuItem joinItem = new JMenuItem("Join online game...");
         joinItem.addActionListener(e -> joinGame());
+        JMenuItem clearAnnotationsItem = new JMenuItem("Clear annotations");
+        clearAnnotationsItem.addActionListener(e -> boardPanel.clearAnnotations());
         JMenuItem exitItem = new JMenuItem("Exit");
         exitItem.addActionListener(e -> dispose());
-        JMenuItem clearAnnotationsItem = new JMenuItem("Clear annotations");
-
-        clearAnnotationsItem.addActionListener(e -> boardPanel.clearAnnotations());
-        gameMenu.add(clearAnnotationsItem);
         gameMenu.add(localItem);
         gameMenu.addSeparator();
         gameMenu.add(hostItem);
         gameMenu.add(joinItem);
         gameMenu.addSeparator();
+        gameMenu.add(clearAnnotationsItem);
+        gameMenu.addSeparator();
         gameMenu.add(exitItem);
         bar.add(gameMenu);
-        JRadioButtonMenuItem lightItem = new JRadioButtonMenuItem("Light theme", true);
-        JRadioButtonMenuItem darkItem  = new JRadioButtonMenuItem("Dark theme");
-        ButtonGroup themeGroup = new ButtonGroup();
-        themeGroup.add(lightItem);
-        themeGroup.add(darkItem);
 
-        lightItem.addActionListener(e -> ThemeManager.apply(ThemeManager.Theme.LIGHT));
-        darkItem.addActionListener(e -> ThemeManager.apply(ThemeManager.Theme.DARK));
-
-        viewMenu.add(lightItem);
-        viewMenu.add(darkItem);
-        bar.add(viewMenu);
-
+        // ---- Engine -----------------------------------------------------
         JMenu engineMenu = new JMenu("Engine");
         engineToggleItem = new JCheckBoxMenuItem("Enable Stockfish (Black)");
         engineToggleItem.addActionListener(e -> toggleEngine(engineToggleItem.isSelected()));
@@ -149,6 +156,19 @@ public class ChessFrame extends JFrame implements GameView {
         engineMenu.addSeparator();
         engineMenu.add(infoItem);
         bar.add(engineMenu);
+
+        // ---- View -------------------------------------------------------
+        JMenu viewMenu = new JMenu("View");
+        JRadioButtonMenuItem lightItem = new JRadioButtonMenuItem("Light theme", true);
+        JRadioButtonMenuItem darkItem  = new JRadioButtonMenuItem("Dark theme");
+        ButtonGroup themeGroup = new ButtonGroup();
+        themeGroup.add(lightItem);
+        themeGroup.add(darkItem);
+        lightItem.addActionListener(e -> ThemeManager.apply(ThemeManager.Theme.LIGHT));
+        darkItem.addActionListener(e -> ThemeManager.apply(ThemeManager.Theme.DARK));
+        viewMenu.add(lightItem);
+        viewMenu.add(darkItem);
+        bar.add(viewMenu);
 
         return bar;
     }
@@ -212,6 +232,7 @@ public class ChessFrame extends JFrame implements GameView {
         }
         installController(newController);
     }
+
     private void installController(GameController newController) {
         if (controller != null) {
             if (analyzer != null) controller.getGame().removeListener(analyzer);
@@ -219,7 +240,7 @@ public class ChessFrame extends JFrame implements GameView {
         }
         controller = newController;
         boardPanel.setListener(controller);
-        statusPanel.setActions(controller);           // <-- required for buttons to work
+        statusPanel.setActions(controller);
         statusPanel.setUndoEnabled(!controller.isNetworked());
         controller.start();
 
@@ -227,18 +248,6 @@ public class ChessFrame extends JFrame implements GameView {
             controller.getGame().addListener(analyzer);
             analyzer.onGameChanged(controller.getGame());
         }
-    }
-
-    
-
-    @Override
-    public void clearBoardAnnotations() {
-        boardPanel.clearAnnotations();
-    }
-
-    @Override
-    public void showOpening(String eco, String name) {
-        openingPanel.setOpening(eco, name);
     }
 
     @Override
@@ -282,13 +291,14 @@ public class ChessFrame extends JFrame implements GameView {
         if (!enable) {
             if (analyzer != null) analyzer.setEnabled(false);
             analysisPanel.clear();
-            evalBar.clear();                        // <-- reset to 50/50
+            accuracyPanel.clear();
+            evalBar.clear();
             return;
         }
         try {
             if (analyzer == null) {
                 analyzer = new GameAnalyzer(EngineConfig.resolveExecutable(), 16);
-                analyzer.setListener(this::onAnalysisUpdate);   // <-- new handler
+                analyzer.setListener(this::onAnalysisUpdate);
             }
         } catch (IOException ex) {
             analysisToggleItem.setSelected(false);
@@ -303,9 +313,9 @@ public class ChessFrame extends JFrame implements GameView {
         }
     }
 
-    /** Feeds both the numeric panel and the vertical eval bar. */
     private void onAnalysisUpdate(GameAnalyzer.Snapshot snapshot) {
         analysisPanel.update(snapshot);
+        accuracyPanel.update(snapshot);
         if (snapshot.isMate) {
             evalBar.setMate(snapshot.whiteCentipawns > 0);
         } else {
@@ -334,12 +344,18 @@ public class ChessFrame extends JFrame implements GameView {
     @Override public void showStatus(String text)          { statusPanel.setStatusText(text); }
     @Override public void showMoves(List<String> notation) { moveListPanel.setMoves(notation); }
     @Override public void showClocks(ChessClock clock)     { clockPanel.update(clock); }
+    @Override public void showOpening(String eco, String name) { openingPanel.setOpening(eco, name); }
+
+    @Override
+    public void clearBoardAnnotations() {
+        boardPanel.clearAnnotations();
+    }
 
     @Override
     public void setFlipped(boolean flipped) {
         boardPanel.setFlipped(flipped);
         boardPanel.repaint();
-        evalBar.setFlipped(flipped);                          // <-- bar follows board
+        evalBar.setFlipped(flipped);
     }
 
     @Override public void showMessage(String message) {
@@ -353,6 +369,4 @@ public class ChessFrame extends JFrame implements GameView {
     }
 
     @Override public Component dialogParent() { return this; }
-
-
 }
