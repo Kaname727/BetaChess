@@ -21,19 +21,24 @@ public final class GameAnalyzer implements GameListener {
 
     /** Immutable snapshot passed to the UI. */
     public static final class Snapshot {
-        public final String evalText;        // "+1.24", "-M3" …
-        public final String bestMoveUci;     // "e2e4" or ""
-        public final int depth;
-        public final double whiteAccuracy;
-        public final double blackAccuracy;
+        public final String  evalText;          // "+1.24", "-M3" …
+        public final String  bestMoveUci;       // "e2e4" or ""
+        public final int     depth;
+        public final double  whiteAccuracy;
+        public final double  blackAccuracy;
+        public final int     whiteCentipawns;   // NEW: from White's POV, mate = ±10000
+        public final boolean isMate;            // NEW
 
         Snapshot(String evalText, String bestMoveUci, int depth,
-                 double whiteAccuracy, double blackAccuracy) {
-            this.evalText = evalText;
-            this.bestMoveUci = bestMoveUci;
-            this.depth = depth;
-            this.whiteAccuracy = whiteAccuracy;
-            this.blackAccuracy = blackAccuracy;
+                 double whiteAccuracy, double blackAccuracy,
+                 int whiteCentipawns, boolean isMate) {
+            this.evalText        = evalText;
+            this.bestMoveUci     = bestMoveUci;
+            this.depth           = depth;
+            this.whiteAccuracy   = whiteAccuracy;
+            this.blackAccuracy   = blackAccuracy;
+            this.whiteCentipawns = whiteCentipawns;
+            this.isMate          = isMate;
         }
     }
 
@@ -145,9 +150,11 @@ public final class GameAnalyzer implements GameListener {
     }
 
     private Snapshot buildSnapshot() {
-        String evalText = "-";
+        String evalText = "0.00";
         String bestMove = "";
         int depthSoFar = 0;
+        int whiteCentipawns = 0;
+        boolean isMate = false;
 
         if (currentEval != null) {
             depthSoFar = currentEval.getDepth();
@@ -155,15 +162,18 @@ public final class GameAnalyzer implements GameListener {
             PieceColor side = game != null ? game.getSideToMove() : PieceColor.WHITE;
 
             if (score.getType() == Score.Type.MATE) {
+                isMate = true;
                 int moves = score.getValue();
                 if (side == PieceColor.BLACK) {
                     moves = -moves;
                 }
                 evalText = moves >= 0 ? "+M" + moves : "-M" + (-moves);
+                whiteCentipawns = moves >= 0 ? 10000 : -10000;
             } else {
                 int cpWhite = side == PieceColor.WHITE
                         ? score.toCentipawns()
                         : -score.toCentipawns();
+                whiteCentipawns = cpWhite;
                 evalText = String.format("%+.2f", cpWhite / 100.0);
             }
             if (currentEval.getBestMoveUci() != null) {
@@ -173,7 +183,8 @@ public final class GameAnalyzer implements GameListener {
 
         return new Snapshot(evalText, bestMove, depthSoFar,
                 computeAccuracy(PieceColor.WHITE),
-                computeAccuracy(PieceColor.BLACK));
+                computeAccuracy(PieceColor.BLACK),
+                whiteCentipawns, isMate);
     }
 
     private double computeAccuracy(PieceColor color) {

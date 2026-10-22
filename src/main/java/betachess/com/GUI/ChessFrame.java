@@ -31,15 +31,16 @@ import java.util.List;
 
 public class ChessFrame extends JFrame implements GameView {
 
-    private final BoardPanel boardPanel;
-    private final StatusPanel statusPanel;
-    private final ClockPanel clockPanel;
+    private final BoardPanel    boardPanel;
+    private final EvalBar       evalBar;
+    private final StatusPanel   statusPanel;
+    private final ClockPanel    clockPanel;
     private final AnalysisPanel analysisPanel;
     private final MoveListPanel moveListPanel;
 
     private GameController controller;
-    private EnginePlayer enginePlayer;
-    private GameAnalyzer analyzer;
+    private EnginePlayer   enginePlayer;
+    private GameAnalyzer   analyzer;
     private JCheckBoxMenuItem engineToggleItem;
     private JCheckBoxMenuItem analysisToggleItem;
     private TimeControl currentTimeControl = TimeControl.unlimited();
@@ -47,18 +48,25 @@ public class ChessFrame extends JFrame implements GameView {
     public ChessFrame() {
         super("BetaChess");
 
-        boardPanel = new BoardPanel(null);
-        statusPanel = new StatusPanel();
-        clockPanel = new ClockPanel();
+        boardPanel    = new BoardPanel(null);
+        evalBar       = new EvalBar();
+        statusPanel   = new StatusPanel();
+        clockPanel    = new ClockPanel();
         analysisPanel = new AnalysisPanel();
         moveListPanel = new MoveListPanel();
 
         clockPanel.setVisible(false);
         analysisPanel.setVisible(false);
 
-        JPanel boardWrapper = new JPanel(new GridBagLayout());
-        boardWrapper.add(boardPanel);
+        // ----- board area: eval bar on the left, board in the center ------
+        JPanel boardArea = new JPanel(new BorderLayout(6, 0));
+        boardArea.add(evalBar, BorderLayout.WEST);
+        boardArea.add(boardPanel, BorderLayout.CENTER);
 
+        JPanel boardWrapper = new JPanel(new GridBagLayout());
+        boardWrapper.add(boardArea);
+
+        // ----- side column -------------------------------------------------
         JPanel side = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridx = 0;
@@ -93,19 +101,14 @@ public class ChessFrame extends JFrame implements GameView {
         JMenuBar bar = new JMenuBar();
 
         JMenu gameMenu = new JMenu("Game");
-
         JMenuItem localItem = new JMenuItem("New local game...");
         localItem.addActionListener(e -> promptForNewGame());
-
         JMenuItem hostItem = new JMenuItem("Host online game...");
         hostItem.addActionListener(e -> hostGame());
-
         JMenuItem joinItem = new JMenuItem("Join online game...");
         joinItem.addActionListener(e -> joinGame());
-
         JMenuItem exitItem = new JMenuItem("Exit");
         exitItem.addActionListener(e -> dispose());
-
         gameMenu.add(localItem);
         gameMenu.addSeparator();
         gameMenu.add(hostItem);
@@ -115,17 +118,13 @@ public class ChessFrame extends JFrame implements GameView {
         bar.add(gameMenu);
 
         JMenu engineMenu = new JMenu("Engine");
-
         engineToggleItem = new JCheckBoxMenuItem("Enable Stockfish (Black)");
         engineToggleItem.addActionListener(e -> toggleEngine(engineToggleItem.isSelected()));
-
         analysisToggleItem = new JCheckBoxMenuItem("Show analysis");
         analysisToggleItem.addActionListener(e -> toggleAnalysis(analysisToggleItem.isSelected()));
-
         JMenuItem infoItem = new JMenuItem("Engine info...");
         infoItem.addActionListener(e -> showMessage(
                 String.join("\n", EngineConfig.diagnostics())));
-
         engineMenu.add(engineToggleItem);
         engineMenu.add(analysisToggleItem);
         engineMenu.addSeparator();
@@ -147,7 +146,6 @@ public class ChessFrame extends JFrame implements GameView {
     private void startLocalGame(TimeControl timeControl) {
         ChessGame game = new ChessGame();
         installController(new GameController(game, this, timeControl));
-
         if (engineToggleItem != null && engineToggleItem.isSelected() && enginePlayer != null) {
             controller.setEnginePlayer(enginePlayer);
         }
@@ -158,18 +156,10 @@ public class ChessFrame extends JFrame implements GameView {
                 Protocol.DEFAULT_PORT);
         if (input == null) return;
         int port;
-        try {
-            port = Integer.parseInt(input.trim());
-        } catch (NumberFormatException ex) {
-            showMessage("Please enter a valid port number.");
-            return;
-        }
-        try {
-            new ChessServer(port).start();
-        } catch (IOException ex) {
-            showMessage("Could not start the server: " + ex.getMessage());
-            return;
-        }
+        try { port = Integer.parseInt(input.trim()); }
+        catch (NumberFormatException ex) { showMessage("Please enter a valid port number."); return; }
+        try { new ChessServer(port).start(); }
+        catch (IOException ex) { showMessage("Could not start the server: " + ex.getMessage()); return; }
         showStatus("Server started on port " + port + " - waiting for an opponent...");
         connectToServer("localhost", port);
     }
@@ -180,12 +170,8 @@ public class ChessFrame extends JFrame implements GameView {
         String portInput = JOptionPane.showInputDialog(this, "Server port:", Protocol.DEFAULT_PORT);
         if (portInput == null) return;
         int port;
-        try {
-            port = Integer.parseInt(portInput.trim());
-        } catch (NumberFormatException ex) {
-            showMessage("Please enter a valid port number.");
-            return;
-        }
+        try { port = Integer.parseInt(portInput.trim()); }
+        catch (NumberFormatException ex) { showMessage("Please enter a valid port number."); return; }
         connectToServer(host.trim(), port);
     }
 
@@ -198,12 +184,10 @@ public class ChessFrame extends JFrame implements GameView {
             engineToggleItem.setSelected(false);
             toggleEngine(false);
         }
-        // Online clocks are not synchronised yet — play online without a clock.
         ChessGame game = new ChessGame();
         GameController newController = new GameController(game, this, TimeControl.unlimited());
-        try {
-            newController.connect(host, port);
-        } catch (IOException ex) {
+        try { newController.connect(host, port); }
+        catch (IOException ex) {
             showMessage("Could not connect to " + host + ":" + port + "\n" + ex.getMessage());
             return;
         }
@@ -260,10 +244,7 @@ public class ChessFrame extends JFrame implements GameView {
     }
 
     private void shutdownEngine() {
-        if (enginePlayer != null) {
-            enginePlayer.shutdown();
-            enginePlayer = null;
-        }
+        if (enginePlayer != null) { enginePlayer.shutdown(); enginePlayer = null; }
     }
 
     private void toggleAnalysis(boolean enable) {
@@ -271,12 +252,13 @@ public class ChessFrame extends JFrame implements GameView {
         if (!enable) {
             if (analyzer != null) analyzer.setEnabled(false);
             analysisPanel.clear();
+            evalBar.clear();                        // <-- reset to 50/50
             return;
         }
         try {
             if (analyzer == null) {
                 analyzer = new GameAnalyzer(EngineConfig.resolveExecutable(), 16);
-                analyzer.setListener(analysisPanel::update);
+                analyzer.setListener(this::onAnalysisUpdate);   // <-- new handler
             }
         } catch (IOException ex) {
             analysisToggleItem.setSelected(false);
@@ -291,11 +273,18 @@ public class ChessFrame extends JFrame implements GameView {
         }
     }
 
-    private void shutdownAnalyzer() {
-        if (analyzer != null) {
-            analyzer.shutdown();
-            analyzer = null;
+    /** Feeds both the numeric panel and the vertical eval bar. */
+    private void onAnalysisUpdate(GameAnalyzer.Snapshot snapshot) {
+        analysisPanel.update(snapshot);
+        if (snapshot.isMate) {
+            evalBar.setMate(snapshot.whiteCentipawns > 0);
+        } else {
+            evalBar.setCentipawns(snapshot.whiteCentipawns);
         }
+    }
+
+    private void shutdownAnalyzer() {
+        if (analyzer != null) { analyzer.shutdown(); analyzer = null; }
     }
 
     // ------------------------------------------------------------- GameView
@@ -314,30 +303,24 @@ public class ChessFrame extends JFrame implements GameView {
     @Override public void showTurn(String text)            { statusPanel.setTurnText(text); }
     @Override public void showStatus(String text)          { statusPanel.setStatusText(text); }
     @Override public void showMoves(List<String> notation) { moveListPanel.setMoves(notation); }
-
-    @Override
-    public void showClocks(ChessClock clock) {
-        clockPanel.update(clock);
-    }
+    @Override public void showClocks(ChessClock clock)     { clockPanel.update(clock); }
 
     @Override
     public void setFlipped(boolean flipped) {
         boardPanel.setFlipped(flipped);
         boardPanel.repaint();
+        evalBar.setFlipped(flipped);                          // <-- bar follows board
     }
 
-    @Override
-    public void showMessage(String message) {
+    @Override public void showMessage(String message) {
         JOptionPane.showMessageDialog(this, message, "BetaChess",
                 JOptionPane.INFORMATION_MESSAGE);
     }
 
-    @Override
-    public void showGameOver(String message) {
+    @Override public void showGameOver(String message) {
         JOptionPane.showMessageDialog(this, message, "Game over",
                 JOptionPane.INFORMATION_MESSAGE);
     }
 
-    @Override
-    public Component dialogParent() { return this; }
+    @Override public Component dialogParent() { return this; }
 }
