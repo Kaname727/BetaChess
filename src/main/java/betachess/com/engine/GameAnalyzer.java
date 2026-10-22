@@ -2,6 +2,9 @@ package betachess.com.engine;
 
 import betachess.com.gamesystem.ChessGame;
 import betachess.com.gamesystem.GameListener;
+import betachess.com.gamesystem.Move;    // NEW
+import betachess.com.gamesystem.San;     // NEW
+import betachess.com.piece.Piece;        // NEW
 import betachess.com.piece.PieceColor;
 
 import javax.swing.SwingUtilities;
@@ -12,28 +15,28 @@ import java.util.Map;
 /**
  * Continuously analyses the current game position with a dedicated engine
  * process and exposes:
- *   – live eval / best move / depth of the current position
+ *   – live eval / best move (UCI + SAN) / depth of the current position
  *   – cumulative accuracy% for White and Black
- *
- * Register it as a {@link GameListener} on the active {@link ChessGame}.
  */
 public final class GameAnalyzer implements GameListener {
 
     /** Immutable snapshot passed to the UI. */
     public static final class Snapshot {
-        public final String  evalText;          // "+1.24", "-M3" …
-        public final String  bestMoveUci;       // "e2e4" or ""
+        public final String  evalText;         // "+1.24", "-M3" …
+        public final String  bestMoveUci;      // "e2e4" or ""
+        public final String  bestMoveSan;      // "e4", "Bb5+", "O-O" … or ""  NEW
         public final int     depth;
         public final double  whiteAccuracy;
         public final double  blackAccuracy;
-        public final int     whiteCentipawns;   // NEW: from White's POV, mate = ±10000
-        public final boolean isMate;            // NEW
+        public final int     whiteCentipawns;  // from White's POV, mate = ±10000
+        public final boolean isMate;
 
-        Snapshot(String evalText, String bestMoveUci, int depth,
-                 double whiteAccuracy, double blackAccuracy,
+        Snapshot(String evalText, String bestMoveUci, String bestMoveSan,
+                 int depth, double whiteAccuracy, double blackAccuracy,
                  int whiteCentipawns, boolean isMate) {
             this.evalText        = evalText;
             this.bestMoveUci     = bestMoveUci;
+            this.bestMoveSan     = bestMoveSan;
             this.depth           = depth;
             this.whiteAccuracy   = whiteAccuracy;
             this.blackAccuracy   = blackAccuracy;
@@ -150,11 +153,12 @@ public final class GameAnalyzer implements GameListener {
     }
 
     private Snapshot buildSnapshot() {
-        String evalText = "0.00";
-        String bestMove = "";
-        int depthSoFar = 0;
-        int whiteCentipawns = 0;
-        boolean isMate = false;
+        String evalText       = "0.00";
+        String bestMoveUci    = "";
+        String bestMoveSan    = "";                       // NEW
+        int    depthSoFar     = 0;
+        int    whiteCentipawns = 0;
+        boolean isMate        = false;
 
         if (currentEval != null) {
             depthSoFar = currentEval.getDepth();
@@ -176,15 +180,36 @@ public final class GameAnalyzer implements GameListener {
                 whiteCentipawns = cpWhite;
                 evalText = String.format("%+.2f", cpWhite / 100.0);
             }
+
             if (currentEval.getBestMoveUci() != null) {
-                bestMove = currentEval.getBestMoveUci();
+                bestMoveUci = currentEval.getBestMoveUci();
+                bestMoveSan = toSan(bestMoveUci);         // NEW
             }
         }
 
-        return new Snapshot(evalText, bestMove, depthSoFar,
+        return new Snapshot(evalText, bestMoveUci, bestMoveSan, depthSoFar,
                 computeAccuracy(PieceColor.WHITE),
                 computeAccuracy(PieceColor.BLACK),
                 whiteCentipawns, isMate);
+    }
+
+    /** Convert a UCI move to SAN using the current board; fall back to UCI on mismatch. */
+    private String toSan(String uci) {                     // NEW
+        if (game == null) {
+            return uci;
+        }
+        try {
+            Move move = Move.fromUci(uci);
+            Piece piece = game.getBoard().get(move.getFrom());
+            // Guards against a stale eval: if the piece at 'from' is missing or
+            // the wrong colour, the eval belongs to a position we no longer have.
+            if (piece == null || piece.getColor() != game.getSideToMove()) {
+                return uci;
+            }
+            return San.of(game.getBoard(), move);
+        } catch (RuntimeException ex) {
+            return uci;
+        }
     }
 
     private double computeAccuracy(PieceColor color) {
@@ -204,7 +229,6 @@ public final class GameAnalyzer implements GameListener {
             if (before == null || after == null) {
                 continue;
             }
-            // Both to the mover's perspective:
             int cpBefore = before.getScore().toCentipawns();
             int cpAfter = -after.getScore().toCentipawns();
             total += AccuracyCalculator.accuracy(cpBefore, cpAfter);
