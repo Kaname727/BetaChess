@@ -35,9 +35,10 @@ public class ChessFrame extends JFrame implements GameView {
 
     private final BoardPanel    boardPanel;
     private final EvalBar       evalBar;
+    private final PlayerPanel   topPlayer;
+    private final PlayerPanel   bottomPlayer;
     private final StatusPanel   statusPanel;
     private final OpeningPanel  openingPanel;
-    private final ClockPanel    clockPanel;
     private final AnalysisPanel analysisPanel;
     private final AccuracyPanel accuracyPanel;
     private final MoveListPanel moveListPanel;
@@ -49,31 +50,41 @@ public class ChessFrame extends JFrame implements GameView {
     private JCheckBoxMenuItem analysisToggleItem;
     private TimeControl currentTimeControl = TimeControl.unlimited();
 
+    private PieceColor topColor    = PieceColor.BLACK;
+    private PieceColor bottomColor = PieceColor.WHITE;
+    private ChessClock currentClock;
+
     public ChessFrame() {
         super("BetaChess");
 
         boardPanel    = new BoardPanel(null);
         evalBar       = new EvalBar();
+        topPlayer     = new PlayerPanel(PieceColor.BLACK);
+        bottomPlayer  = new PlayerPanel(PieceColor.WHITE);
         statusPanel   = new StatusPanel();
         openingPanel  = new OpeningPanel();
-        clockPanel    = new ClockPanel();
         analysisPanel = new AnalysisPanel();
         accuracyPanel = new AccuracyPanel();
         moveListPanel = new MoveListPanel();
 
-        clockPanel.setVisible(false);
         analysisPanel.setVisible(false);
 
-        // ----- board area: eval bar on the left, board in the center ------
-        JPanel boardArea = new JPanel(new BorderLayout(6, 0));
+        // ----- board: eval bar + board, flanked by player plates -----
+        JPanel boardWithEval = new JPanel(new BorderLayout(6, 0));
+        boardWithEval.setOpaque(false);
+        boardWithEval.add(evalBar, BorderLayout.WEST);
+        boardWithEval.add(boardPanel, BorderLayout.CENTER);
+
+        JPanel boardArea = new JPanel(new BorderLayout(0, 6));
         boardArea.setOpaque(false);
-        boardArea.add(evalBar, BorderLayout.WEST);
-        boardArea.add(boardPanel, BorderLayout.CENTER);
+        boardArea.add(topPlayer, BorderLayout.NORTH);
+        boardArea.add(boardWithEval, BorderLayout.CENTER);
+        boardArea.add(bottomPlayer, BorderLayout.SOUTH);
 
         JPanel boardWrapper = new JPanel(new GridBagLayout());
         boardWrapper.add(boardArea);
 
-        // ----- bottom of the side column: accuracy | move list -----------
+        // ----- bottom of side column: accuracy | move list ---------
         JPanel accuracyWrapper = new JPanel(new BorderLayout());
         accuracyWrapper.setOpaque(false);
         accuracyWrapper.setPreferredSize(new Dimension(120, 0));
@@ -84,18 +95,16 @@ public class ChessFrame extends JFrame implements GameView {
         lowerRow.add(accuracyWrapper, BorderLayout.WEST);
         lowerRow.add(moveListPanel, BorderLayout.CENTER);
 
-        // ----- side column -------------------------------------------------
+        // ----- side column -----------------------------------------
         JPanel side = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridx = 0;
         gbc.weightx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
-
         gbc.gridy = 0; side.add(statusPanel,   gbc);
         gbc.gridy = 1; side.add(openingPanel,  gbc);
-        gbc.gridy = 2; side.add(clockPanel,    gbc);
-        gbc.gridy = 3; side.add(analysisPanel, gbc);
-        gbc.gridy = 4;
+        gbc.gridy = 2; side.add(analysisPanel, gbc);
+        gbc.gridy = 3;
         gbc.weighty = 1;
         gbc.fill = GridBagConstraints.BOTH;
         side.add(lowerRow, gbc);
@@ -120,7 +129,6 @@ public class ChessFrame extends JFrame implements GameView {
     private JMenuBar buildMenuBar() {
         JMenuBar bar = new JMenuBar();
 
-        // ---- Game -------------------------------------------------------
         JMenu gameMenu = new JMenu("Game");
         JMenuItem localItem = new JMenuItem("New local game...");
         localItem.addActionListener(e -> promptForNewGame());
@@ -142,7 +150,6 @@ public class ChessFrame extends JFrame implements GameView {
         gameMenu.add(exitItem);
         bar.add(gameMenu);
 
-        // ---- Engine -----------------------------------------------------
         JMenu engineMenu = new JMenu("Engine");
         engineToggleItem = new JCheckBoxMenuItem("Enable Stockfish (Black)");
         engineToggleItem.addActionListener(e -> toggleEngine(engineToggleItem.isSelected()));
@@ -157,7 +164,6 @@ public class ChessFrame extends JFrame implements GameView {
         engineMenu.add(infoItem);
         bar.add(engineMenu);
 
-        // ---- View -------------------------------------------------------
         JMenu viewMenu = new JMenu("View");
         JRadioButtonMenuItem lightItem = new JRadioButtonMenuItem("Light theme", true);
         JRadioButtonMenuItem darkItem  = new JRadioButtonMenuItem("Dark theme");
@@ -343,8 +349,20 @@ public class ChessFrame extends JFrame implements GameView {
     @Override public void showTurn(String text)            { statusPanel.setTurnText(text); }
     @Override public void showStatus(String text)          { statusPanel.setStatusText(text); }
     @Override public void showMoves(List<String> notation) { moveListPanel.setMoves(notation); }
-    @Override public void showClocks(ChessClock clock)     { clockPanel.update(clock); }
     @Override public void showOpening(String eco, String name) { openingPanel.setOpening(eco, name); }
+
+    @Override
+    public void showClocks(ChessClock clock) {
+        currentClock = clock;
+        topPlayer.updateClock(clock);
+        bottomPlayer.updateClock(clock);
+    }
+
+    @Override
+    public void showActiveSide(PieceColor side) {
+        topPlayer.setActive(side != null && side == topColor);
+        bottomPlayer.setActive(side != null && side == bottomColor);
+    }
 
     @Override
     public void clearBoardAnnotations() {
@@ -356,6 +374,17 @@ public class ChessFrame extends JFrame implements GameView {
         boardPanel.setFlipped(flipped);
         boardPanel.repaint();
         evalBar.setFlipped(flipped);
+
+        topColor    = flipped ? PieceColor.WHITE : PieceColor.BLACK;
+        bottomColor = flipped ? PieceColor.BLACK : PieceColor.WHITE;
+        topPlayer.setColor(topColor);
+        bottomPlayer.setColor(bottomColor);
+
+        // Refresh clock labels because each panel now reads the other side's time
+        if (currentClock != null) {
+            topPlayer.updateClock(currentClock);
+            bottomPlayer.updateClock(currentClock);
+        }
     }
 
     @Override public void showMessage(String message) {

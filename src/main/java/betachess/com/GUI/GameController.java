@@ -391,6 +391,7 @@ public final class GameController
 
     private void refresh() {
         List<Position> targets = Collections.emptyList();
+        view.showActiveSide(game.getStatus().isGameOver() ? null : game.getSideToMove());
         if (selected != null) {
             targets = new ArrayList<Position>();
             for (Move move : game.getLegalMovesFrom(selected)) {
