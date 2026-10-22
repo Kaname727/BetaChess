@@ -6,8 +6,12 @@ package betachess.com.GUI;
 public interface GameActions {
 
     void onNewGameRequested();
-    void onUndoRequested();
+    
     void onClearRequested();
+
+    void onUndoRequested();
+
     void onDrawRequested();
+
     void onResignRequested();
 }

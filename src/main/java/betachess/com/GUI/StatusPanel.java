@@ -23,7 +23,6 @@ public class StatusPanel extends JPanel {
     private final JButton drawButton    = new JButton("Offer draw");
     private final JButton resignButton  = new JButton("Resign");
 
-
     private GameActions actions;
 
     public StatusPanel() {
@@ -45,7 +44,7 @@ public class StatusPanel extends JPanel {
 
         newGameButton.addActionListener(event -> fireNewGame());
         undoButton.addActionListener(event -> fireUndo());
-        clearButton.addActionListener(event -> fireClear());   // only if you have a Clear button
+        clearButton.addActionListener(event -> fireClear());        // NEW
         drawButton.addActionListener(event -> fireDraw());
         resignButton.addActionListener(event -> fireResign());
     }
@@ -87,24 +86,10 @@ public class StatusPanel extends JPanel {
         resignButton.setEnabled(enabled);
         drawButton.setEnabled(enabled);
     }
-    private void fireNewGame() {
-        System.err.println("[StatusPanel] New game clicked, actions=" + actions);
-        if (actions != null) actions.onNewGameRequested();
-    }
-    private void fireUndo() {
-        System.err.println("[StatusPanel] Undo clicked, actions=" + actions);
-        if (actions != null) actions.onUndoRequested();
-    }
-    private void fireClear() {
-        System.err.println("[StatusPanel] Clear clicked, actions=" + actions);
-        if (actions != null) actions.onClearRequested();
-    }
-    private void fireDraw() {
-        System.err.println("[StatusPanel] Draw clicked, actions=" + actions);
-        if (actions != null) actions.onDrawRequested();
-    }
-    private void fireResign() {
-        System.err.println("[StatusPanel] Resign clicked, actions=" + actions);
-        if (actions != null) actions.onResignRequested();
-    }
+
+    private void fireNewGame() { if (actions != null) actions.onNewGameRequested(); }
+    private void fireUndo()    { if (actions != null) actions.onUndoRequested(); }
+    private void fireClear()   { if (actions != null) actions.onClearRequested(); }
+    private void fireDraw()    { if (actions != null) actions.onDrawRequested(); }
+    private void fireResign()  { if (actions != null) actions.onResignRequested(); }
 }
