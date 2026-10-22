@@ -12,16 +12,19 @@ import java.awt.Font;
  */
 public class OpeningPanel extends JPanel {
 
+    private static final Color ECO_COLOR  = new Color(0x1565C0);
+    private static final Color NAME_COLOR = new Color(0x212121);
+
     private final JLabel ecoLabel  = new JLabel("—");
     private final JLabel nameLabel = new JLabel(" ");
 
     public OpeningPanel() {
         setLayout(new BorderLayout(6, 0));
         setBorder(BorderFactory.createEmptyBorder(2, 0, 4, 0));
-
         ecoLabel.setFont(ecoLabel.getFont().deriveFont(Font.BOLD, 12f));
+        ecoLabel.setForeground(ECO_COLOR);
         nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN, 12f));
-
+        nameLabel.setForeground(NAME_COLOR);
         add(ecoLabel, BorderLayout.WEST);
         add(nameLabel, BorderLayout.CENTER);
     }
