@@ -19,7 +19,7 @@ public interface GameView {
     void showTurn(String text);
 
     void clearBoardAnnotations();
-
+    void showActiveSide(betachess.com.piece.PieceColor side);
     void showOpening(String eco, String name);
 
     void showStatus(String text);
