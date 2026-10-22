@@ -109,6 +109,9 @@ public class ChessFrame extends JFrame implements GameView {
         joinItem.addActionListener(e -> joinGame());
         JMenuItem exitItem = new JMenuItem("Exit");
         exitItem.addActionListener(e -> dispose());
+        JMenuItem clearAnnotationsItem = new JMenuItem("Clear annotations");
+        clearAnnotationsItem.addActionListener(e -> boardPanel.clearAnnotations());
+        gameMenu.add(clearAnnotationsItem);
         gameMenu.add(localItem);
         gameMenu.addSeparator();
         gameMenu.add(hostItem);
@@ -209,6 +212,11 @@ public class ChessFrame extends JFrame implements GameView {
             controller.getGame().addListener(analyzer);
             analyzer.onGameChanged(controller.getGame());
         }
+    }
+
+    @Override
+    public void clearBoardAnnotations() {
+        boardPanel.clearAnnotations();
     }
 
     @Override

@@ -219,6 +219,11 @@ public final class GameController
                 lastPly = ply;
             }
         }
+        int ply = g.getHistory().size();
+        if (ply != lastAnnotatedPly) {
+            view.clearBoardAnnotations();
+            lastAnnotatedPly = ply;
+        }
         refresh();
         pushClockToView();
     }
@@ -307,6 +312,8 @@ public final class GameController
     public void onDisconnected(String reason) {
         SwingUtilities.invokeLater(() -> view.showStatus("Disconnected: " + reason));
     }
+
+    private int lastAnnotatedPly = -1;
 
     // ----------------------------------------------------------------- render
 

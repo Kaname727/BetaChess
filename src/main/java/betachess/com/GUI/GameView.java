@@ -18,6 +18,8 @@ public interface GameView {
 
     void showTurn(String text);
 
+    void clearBoardAnnotations();
+
     void showOpening(String eco, String name);
 
     void showStatus(String text);
