@@ -15,6 +15,8 @@ import betachess.com.engine.EnginePlayer;
 import betachess.com.piece.Piece;
 import betachess.com.piece.PieceColor;
 import betachess.com.piece.PieceType;
+import betachess.com.engine.opening.Opening;
+import betachess.com.engine.opening.OpeningDetector;
 
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -329,6 +331,13 @@ public final class GameController
         List<String> notation = new ArrayList<String>();
         for (MoveRecord record : history) notation.add(record.getNotation());
         view.showMoves(notation);
+
+        Opening opening = OpeningDetector.detect(game);
+        if (opening != null) {
+            view.showOpening(opening.getEco(), opening.getName());
+        } else {
+            view.showOpening("—", "Unknown opening");
+        }
 
         if (enginePlayer != null) enginePlayer.onGameChanged(game);
     }

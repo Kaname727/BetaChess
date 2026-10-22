@@ -37,6 +37,7 @@ public class ChessFrame extends JFrame implements GameView {
     private final ClockPanel    clockPanel;
     private final AnalysisPanel analysisPanel;
     private final MoveListPanel moveListPanel;
+    private final OpeningPanel openingPanel;
 
     private GameController controller;
     private EnginePlayer   enginePlayer;
@@ -54,6 +55,7 @@ public class ChessFrame extends JFrame implements GameView {
         clockPanel    = new ClockPanel();
         analysisPanel = new AnalysisPanel();
         moveListPanel = new MoveListPanel();
+        openingPanel = new OpeningPanel();
 
         clockPanel.setVisible(false);
         analysisPanel.setVisible(false);
@@ -69,13 +71,11 @@ public class ChessFrame extends JFrame implements GameView {
         // ----- side column -------------------------------------------------
         JPanel side = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.weightx = 1;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.gridy = 0; side.add(statusPanel, gbc);
-        gbc.gridy = 1; side.add(clockPanel, gbc);
-        gbc.gridy = 2; side.add(analysisPanel, gbc);
-        gbc.gridy = 3;
+        gbc.gridy = 1; side.add(openingPanel, gbc);   // <-- new
+        gbc.gridy = 2; side.add(clockPanel, gbc);
+        gbc.gridy = 3; side.add(analysisPanel, gbc);
+        gbc.gridy = 4;
         gbc.weighty = 1;
         gbc.fill = GridBagConstraints.BOTH;
         side.add(moveListPanel, gbc);
@@ -209,6 +209,11 @@ public class ChessFrame extends JFrame implements GameView {
             controller.getGame().addListener(analyzer);
             analyzer.onGameChanged(controller.getGame());
         }
+    }
+
+    @Override
+    public void showOpening(String eco, String name) {
+        openingPanel.setOpening(eco, name);
     }
 
     @Override
