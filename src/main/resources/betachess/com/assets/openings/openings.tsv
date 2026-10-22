@@ -1707,6 +1707,7 @@ C10	French Defense: Rubinstein Variation, Capablanca Line	FEN:r1bqkb1r/ppp2ppp/4
 C10	French Defense: Rubinstein Variation, Ellis Gambit	FEN:rnbqkbnr/ppp2ppp/8/4p3/3PN3/8/PPP2PPP/R1BQKBNR w KQkq -
 C10	French Defense: Rubinstein Variation, Fort Knox Variation	FEN:rn1qkbnr/ppp2ppp/2b1p3/8/3PN3/5N2/PPP2PPP/R1BQKB1R w KQkq -
 C10	French Defense: Rubinstein Variation, Kasparov Attack	FEN:r1bqkb1r/ppp2ppp/4pn2/8/3P4/2P2N2/PP3PPP/R1BQKB1R b KQkq -
+C10 Alien Gambit: Bonjor Variation	FEN:rnbqkb1r/ppp2Np1/4pn1p/8/3P4/8/PPP2PPP/R1BQKBNR b KQkq -
 C10	French Defense: Rubinstein Variation, Maric Variation	FEN:rnb1kbnr/ppp2ppp/4p3/3q4/3PN3/8/PPP2PPP/R1BQKBNR w KQkq -
 C11	French Defense: Classical Variation	FEN:rnbqkb1r/ppp2ppp/4pn2/3p4/3PP3/2N5/PPP2PPP/R1BQKBNR w KQkq -
 C11	French Defense: Classical Variation, Delayed Exchange Variation	FEN:rnbqkb1r/ppp2ppp/4pn2/3P4/3P4/2N5/PPP2PPP/R1BQKBNR b KQkq -
@@ -3864,3 +3865,4 @@ E98	King's Indian Defense: Orthodox Variation, Classical System, Kozul Gambit	FE
 E98	King's Indian Defense: Orthodox Variation, Classical System, Neo-Classical Line	FEN:r1bq1rk1/pppnnpbp/3p2p1/3Pp3/2P1P3/2N1B3/PP2BPPP/R2QNRK1 b - -
 E99	King's Indian Defense: Orthodox Variation, Classical System, Benko Attack	FEN:r1bq1rk1/pppnn1bp/3p2p1/3Ppp2/2P1P1P1/2N2P2/PP2B2P/R1BQNRK1 b - -
 E99	King's Indian Defense: Orthodox Variation, Classical System, Traditional Line	FEN:r1bq1rk1/pppnn1bp/3p2p1/3Ppp2/2P1P3/2N2P2/PP2B1PP/R1BQNRK1 w - -
+
