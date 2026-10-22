@@ -236,6 +236,14 @@ public final class GameController
         pushClockToView();
     }
 
+
+    @Override
+    public void onClearRequested() {
+        selected = null;                    // drop any half-finished move
+        view.clearBoardAnnotations();       // wipe arrows + square marks
+        refresh();                          // repaint selection state
+    }
+
     // ---------------------------------------------------------- clock events
 
     @Override

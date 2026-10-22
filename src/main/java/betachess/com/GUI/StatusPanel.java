@@ -14,13 +14,14 @@ import java.awt.Font;
  */
 public class StatusPanel extends JPanel {
 
-    private final JLabel turnLabel = new JLabel("White to move");
+    private final JLabel turnLabel   = new JLabel("White to move");
     private final JLabel statusLabel = new JLabel(" ");
 
     private final JButton newGameButton = new JButton("New game");
-    private final JButton undoButton = new JButton("Undo");
-    private final JButton drawButton = new JButton("Offer draw");
-    private final JButton resignButton = new JButton("Resign");
+    private final JButton undoButton    = new JButton("Undo");
+    private final JButton clearButton   = new JButton("Clear");     // NEW
+    private final JButton drawButton    = new JButton("Offer draw");
+    private final JButton resignButton  = new JButton("Resign");
 
     private GameActions actions;
 
@@ -32,28 +33,34 @@ public class StatusPanel extends JPanel {
         turnLabel.setAlignmentX(LEFT_ALIGNMENT);
         statusLabel.setAlignmentX(LEFT_ALIGNMENT);
 
+        clearButton.setToolTipText("Clear arrows, square highlights and selection");
+
         add(turnLabel);
         add(statusLabel);
         add(Box.createVerticalStrut(8));
-        add(buttonRow(newGameButton, undoButton));
+        add(buttonRow(newGameButton, undoButton, clearButton));    // NEW layout
         add(Box.createVerticalStrut(4));
         add(buttonRow(drawButton, resignButton));
 
         newGameButton.addActionListener(event -> fireNewGame());
         undoButton.addActionListener(event -> fireUndo());
+        clearButton.addActionListener(event -> fireClear());        // NEW
         drawButton.addActionListener(event -> fireDraw());
         resignButton.addActionListener(event -> fireResign());
     }
 
-    private JPanel buttonRow(JButton left, JButton right) {
+    /** One horizontal row of buttons, any number of them. */
+    private JPanel buttonRow(JButton... buttons) {
         JPanel row = new JPanel();
         row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
         row.setAlignmentX(LEFT_ALIGNMENT);
-        left.setAlignmentX(LEFT_ALIGNMENT);
-        right.setAlignmentX(LEFT_ALIGNMENT);
-        row.add(left);
-        row.add(Box.createHorizontalStrut(6));
-        row.add(right);
+        for (int i = 0; i < buttons.length; i++) {
+            buttons[i].setAlignmentX(LEFT_ALIGNMENT);
+            if (i > 0) {
+                row.add(Box.createHorizontalStrut(6));
+            }
+            row.add(buttons[i]);
+        }
         row.add(Box.createHorizontalGlue());
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
         return row;
@@ -80,27 +87,9 @@ public class StatusPanel extends JPanel {
         drawButton.setEnabled(enabled);
     }
 
-    private void fireNewGame() {
-        if (actions != null) {
-            actions.onNewGameRequested();
-        }
-    }
-
-    private void fireUndo() {
-        if (actions != null) {
-            actions.onUndoRequested();
-        }
-    }
-
-    private void fireDraw() {
-        if (actions != null) {
-            actions.onDrawRequested();
-        }
-    }
-
-    private void fireResign() {
-        if (actions != null) {
-            actions.onResignRequested();
-        }
-    }
+    private void fireNewGame() { if (actions != null) actions.onNewGameRequested(); }
+    private void fireUndo()    { if (actions != null) actions.onUndoRequested(); }
+    private void fireClear()   { if (actions != null) actions.onClearRequested(); }
+    private void fireDraw()    { if (actions != null) actions.onDrawRequested(); }
+    private void fireResign()  { if (actions != null) actions.onResignRequested(); }
 }
