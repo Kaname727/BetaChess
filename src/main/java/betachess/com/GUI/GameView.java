@@ -3,6 +3,7 @@ package betachess.com.GUI;
 import betachess.com.gamesystem.Board;
 import betachess.com.gamesystem.Move;
 import betachess.com.gamesystem.Position;
+import betachess.com.gamesystem.clock.ChessClock;
 
 import java.awt.Component;
 import java.util.List;
@@ -24,6 +25,8 @@ public interface GameView {
     void setFlipped(boolean flipped);
 
     void showMessage(String message);
+
+    void showClocks(ChessClock clock);
 
     void showGameOver(String message);
 

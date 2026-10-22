@@ -6,12 +6,15 @@ import betachess.com.gamesystem.GameStatus;
 import betachess.com.gamesystem.Move;
 import betachess.com.gamesystem.MoveRecord;
 import betachess.com.gamesystem.Position;
+import betachess.com.gamesystem.clock.ChessClock;
+import betachess.com.gamesystem.clock.ClockTicker;
+import betachess.com.gamesystem.clock.TimeControl;
 import betachess.com.gamesystem.net.ChessClient;
 import betachess.com.gamesystem.net.Protocol;
+import betachess.com.engine.EnginePlayer;
 import betachess.com.piece.Piece;
 import betachess.com.piece.PieceColor;
 import betachess.com.piece.PieceType;
-import betachess.com.engine.EnginePlayer;
 
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -20,31 +23,44 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Glue between the pure game system, the swing view and the network client.
- * One controller instance exists per running game.
- */
 public final class GameController
-        implements BoardInteractionListener, GameListener, GameActions, ChessClient.Listener {
+        implements BoardInteractionListener, GameListener, GameActions,
+        ChessClient.Listener, ClockTicker.Listener {
 
     private final ChessGame game;
     private final GameView view;
-    private EnginePlayer enginePlayer;
+    private final TimeControl timeControl;
 
     private ChessClient client;
+    private EnginePlayer enginePlayer;
     private PieceColor localColor = PieceColor.WHITE;
     private Position selected;
 
-    public GameController(ChessGame game, GameView view) {
+    private ChessClock clock;
+    private ClockTicker ticker;
+    private int lastPly;
+
+    public GameController(ChessGame game, GameView view, TimeControl timeControl) {
         this.game = game;
         this.view = view;
+        this.timeControl = timeControl == null ? TimeControl.unlimited() : timeControl;
+        if (!this.timeControl.isUnlimited()) {
+            this.clock = new ChessClock(this.timeControl);
+        }
     }
 
     // ------------------------------------------------------------ life cycle
 
     public void start() {
         game.addListener(this);
+        if (clock != null) {
+            ticker = new ClockTicker(clock, this);
+            clock.start(game.getSideToMove());
+            lastPly = game.getHistory().size();
+            ticker.start();
+        }
         refresh();
+        pushClockToView();
     }
 
     public void connect(String host, int port) throws IOException {
@@ -53,11 +69,24 @@ public final class GameController
         this.client = newClient;
     }
 
-    public boolean isNetworked() {
-        return client != null;
+    public boolean isNetworked() { return client != null; }
+
+    public ChessGame getGame() { return game; }
+
+    public TimeControl getTimeControl() { return timeControl; }
+
+    public void setEnginePlayer(EnginePlayer enginePlayer) {
+        this.enginePlayer = enginePlayer;
+        if (enginePlayer != null) {
+            enginePlayer.onGameChanged(game);
+        }
     }
 
     public void dispose() {
+        if (ticker != null) {
+            ticker.stop();
+            ticker = null;
+        }
         game.removeListener(this);
         if (client != null) {
             client.close();
@@ -68,22 +97,16 @@ public final class GameController
             enginePlayer = null;
         }
     }
-    public void setEnginePlayer(EnginePlayer enginePlayer) {
-        this.enginePlayer = enginePlayer;
-    }
 
     // ------------------------------------------------------------ board input
 
     @Override
     public void onSquareSelected(Position position) {
-        if (game.getStatus().isGameOver()) {
-            return;
-        }
+        if (game.getStatus().isGameOver()) return;
         if (isNetworked() && game.getSideToMove() != localColor) {
             view.showStatus("It is not your turn.");
             return;
         }
-
         if (selected != null) {
             Move move = chooseMove(selected, position);
             if (move != null) {
@@ -92,13 +115,8 @@ public final class GameController
                 return;
             }
         }
-
         Piece piece = game.getBoard().get(position);
-        if (piece != null && piece.getColor() == game.getSideToMove()) {
-            selected = position;
-        } else {
-            selected = null;
-        }
+        selected = (piece != null && piece.getColor() == game.getSideToMove()) ? position : null;
         refresh();
     }
 
@@ -109,18 +127,13 @@ public final class GameController
                 candidates.add(move);
             }
         }
-        if (candidates.isEmpty()) {
-            return null;
-        }
-        if (candidates.size() == 1) {
-            return candidates.get(0);
-        }
+        if (candidates.isEmpty()) return null;
+        if (candidates.size() == 1) return candidates.get(0);
 
         Object[] options = {"Queen", "Rook", "Bishop", "Knight"};
         int choice = JOptionPane.showOptionDialog(view.dialogParent(), "Promote the pawn to:",
                 "Promotion", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
                 null, options, options[0]);
-
         PieceType type;
         switch (choice) {
             case 1:  type = PieceType.ROOK;   break;
@@ -128,11 +141,7 @@ public final class GameController
             case 3:  type = PieceType.KNIGHT; break;
             default: type = PieceType.QUEEN;  break;
         }
-        for (Move move : candidates) {
-            if (move.getPromotion() == type) {
-                return move;
-            }
-        }
+        for (Move move : candidates) if (move.getPromotion() == type) return move;
         return candidates.get(0);
     }
 
@@ -142,9 +151,7 @@ public final class GameController
             refresh();
             return;
         }
-        if (isNetworked()) {
-            client.send(Protocol.MOVE, move.toUci());
-        }
+        if (isNetworked()) client.send(Protocol.MOVE, move.toUci());
     }
 
     // --------------------------------------------------------------- actions
@@ -152,10 +159,8 @@ public final class GameController
     @Override
     public void onNewGameRequested() {
         selected = null;
-        if (isNetworked()) {
-            client.send(Protocol.NEW_GAME, "");
-        }
-        game.reset();
+        if (isNetworked()) client.send(Protocol.NEW_GAME, "");
+        game.reset();   // fires onGameChanged(ply=0) → clock resets below
     }
 
     @Override
@@ -170,9 +175,7 @@ public final class GameController
 
     @Override
     public void onDrawRequested() {
-        if (game.getStatus().isGameOver()) {
-            return;
-        }
+        if (game.getStatus().isGameOver()) return;
         if (isNetworked()) {
             client.send(Protocol.DRAW_OFFER, "");
             view.showStatus("Draw offered...");
@@ -180,40 +183,66 @@ public final class GameController
         }
         int answer = JOptionPane.showConfirmDialog(view.dialogParent(),
                 "Do both players agree to a draw?", "Draw", JOptionPane.YES_NO_OPTION);
-        if (answer == JOptionPane.YES_OPTION) {
-            game.finish(GameStatus.DRAW_AGREED);
-        }
+        if (answer == JOptionPane.YES_OPTION) game.finish(GameStatus.DRAW_AGREED);
     }
 
     @Override
     public void onResignRequested() {
-        if (game.getStatus().isGameOver()) {
-            return;
-        }
+        if (game.getStatus().isGameOver()) return;
         int answer = JOptionPane.showConfirmDialog(view.dialogParent(),
                 "Do you really want to resign?", "Resign", JOptionPane.YES_NO_OPTION);
-        if (answer != JOptionPane.YES_OPTION) {
-            return;
-        }
-        if (isNetworked()) {
-            client.send(Protocol.RESIGN, "");
-        }
+        if (answer != JOptionPane.YES_OPTION) return;
+        if (isNetworked()) client.send(Protocol.RESIGN, "");
         game.finish(GameStatus.RESIGNED);
     }
 
-    // ------------------------------------------------------- game callbacks
+    // ------------------------------------------------------------ game events
 
     @Override
-    public void onGameChanged(ChessGame changedGame) {
+    public void onGameChanged(ChessGame g) {
+        if (clock != null) {
+            int ply = g.getHistory().size();
+            if (ply == 0) {
+                // fresh game (or network reset)
+                clock.reset();
+                clock.start(g.getSideToMove());
+                lastPly = 0;
+                if (ticker != null && !ticker.isRunning()) ticker.start();
+            } else if (ply > lastPly && clock.isRunning()) {
+                clock.switchTo(g.getSideToMove());
+                lastPly = ply;
+            } else if (ply < lastPly) {
+                if (clock.isRunning()) clock.stop();
+                if (!g.getStatus().isGameOver()) clock.start(g.getSideToMove());
+                lastPly = ply;
+            }
+        }
         refresh();
+        pushClockToView();
     }
 
     @Override
-    public void onGameFinished(ChessGame finishedGame, GameStatus status) {
+    public void onGameFinished(ChessGame g, GameStatus status) {
+        if (ticker != null) ticker.stop();
+        if (clock != null) clock.stop();
         view.showGameOver(describeStatus());
+        pushClockToView();
     }
 
-    // ---------------------------------------------------- network callbacks
+    // ---------------------------------------------------------- clock events
+
+    @Override
+    public void onTick(ChessClock clock) {
+        pushClockToView();
+    }
+
+    @Override
+    public void onFlag(PieceColor flagged) {
+        if (game.getStatus().isGameOver()) return;   // race guard
+        game.finish(GameStatus.TIMEOUT);
+    }
+
+    // ------------------------------------------------------- network events
 
     @Override
     public void onMessage(String type, String payload) {
@@ -233,20 +262,16 @@ public final class GameController
                 view.showStatus("You play " + name(localColor) + ".");
                 refresh();
                 break;
-
             case Protocol.MOVE:
                 try {
                     game.makeMove(Move.fromUci(payload));
-                } catch (RuntimeException exception) {
+                } catch (RuntimeException ex) {
                     view.showStatus("Opponent sent an invalid move: " + payload);
                 }
                 break;
-
             case Protocol.RESIGN:
                 game.finish(GameStatus.RESIGNED);
-                view.showStatus("Your opponent resigned.");
                 break;
-
             case Protocol.DRAW_OFFER:
                 int answer = JOptionPane.showConfirmDialog(view.dialogParent(),
                         "Your opponent offers a draw. Accept?", "Draw offer",
@@ -258,24 +283,19 @@ public final class GameController
                     client.send(Protocol.DRAW_DECLINE, "");
                 }
                 break;
-
             case Protocol.DRAW_ACCEPT:
                 game.finish(GameStatus.DRAW_AGREED);
                 break;
-
             case Protocol.DRAW_DECLINE:
                 view.showStatus("Draw offer declined.");
                 break;
-
             case Protocol.NEW_GAME:
                 selected = null;
                 game.reset();
                 break;
-
             case Protocol.INFO:
                 view.showStatus(payload);
                 break;
-
             default:
                 break;
         }
@@ -283,43 +303,38 @@ public final class GameController
 
     @Override
     public void onDisconnected(String reason) {
-        SwingUtilities.invokeLater(() ->
-                view.showStatus("Disconnected: " + reason));
+        SwingUtilities.invokeLater(() -> view.showStatus("Disconnected: " + reason));
     }
 
-    // ---------------------------------------------------------------- render
+    // ----------------------------------------------------------------- render
 
     private void refresh() {
         List<Position> targets = Collections.emptyList();
         if (selected != null) {
             targets = new ArrayList<Position>();
-            for (Move move : game.getLegalMovesFrom(selected)) {
-                targets.add(move.getTo());
-            }
-        }
-        if (enginePlayer != null) {
-            enginePlayer.onGameChanged(game);
+            for (Move move : game.getLegalMovesFrom(selected)) targets.add(move.getTo());
         }
 
         Move lastMove = null;
         List<MoveRecord> history = game.getHistory();
-        if (!history.isEmpty()) {
-            lastMove = history.get(history.size() - 1).getMove();
-        }
+        if (!history.isEmpty()) lastMove = history.get(history.size() - 1).getMove();
 
         Position checkSquare = game.isInCheck()
-                ? game.getBoard().findKing(game.getSideToMove())
-                : null;
+                ? game.getBoard().findKing(game.getSideToMove()) : null;
 
         view.showBoard(game.getBoard(), selected, targets, lastMove, checkSquare);
         view.showTurn(name(game.getSideToMove()) + " to move");
         view.showStatus(describeStatus());
 
         List<String> notation = new ArrayList<String>();
-        for (MoveRecord record : history) {
-            notation.add(record.getNotation());
-        }
+        for (MoveRecord record : history) notation.add(record.getNotation());
         view.showMoves(notation);
+
+        if (enginePlayer != null) enginePlayer.onGameChanged(game);
+    }
+
+    private void pushClockToView() {
+        view.showClocks(clock);
     }
 
     private String describeStatus() {
@@ -337,6 +352,8 @@ public final class GameController
                 return "Draw agreed";
             case RESIGNED:
                 return "Resignation - " + name(game.getSideToMove().opposite()) + " wins";
+            case TIMEOUT:
+                return "Flag fell - " + name(game.getSideToMove().opposite()) + " wins on time";
             case CHECK:
                 return name(game.getSideToMove()) + " is in check";
             default:
@@ -345,9 +362,6 @@ public final class GameController
                 }
                 return "Your move";
         }
-    }
-    public betachess.com.gamesystem.ChessGame getGame() {
-        return game;
     }
 
     private static String name(PieceColor color) {

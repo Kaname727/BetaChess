@@ -12,7 +12,8 @@ public enum GameStatus {
     DRAW_FIFTY_MOVE,
     DRAW_INSUFFICIENT_MATERIAL,
     DRAW_AGREED,
-    RESIGNED;
+    RESIGNED,
+    TIMEOUT;
 
     public boolean isGameOver() {
         switch (this) {
@@ -22,6 +23,7 @@ public enum GameStatus {
             case DRAW_INSUFFICIENT_MATERIAL:
             case DRAW_AGREED:
             case RESIGNED:
+            case TIMEOUT:
                 return true;
             default:
                 return false;

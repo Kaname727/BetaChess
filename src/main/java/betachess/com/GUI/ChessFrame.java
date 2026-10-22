@@ -7,13 +7,13 @@ import betachess.com.gamesystem.Board;
 import betachess.com.gamesystem.ChessGame;
 import betachess.com.gamesystem.Move;
 import betachess.com.gamesystem.Position;
+import betachess.com.gamesystem.clock.ChessClock;
+import betachess.com.gamesystem.clock.TimeControl;
 import betachess.com.gamesystem.net.ChessServer;
 import betachess.com.gamesystem.net.Protocol;
 import betachess.com.piece.PieceColor;
 
 import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JFrame;
 import javax.swing.JMenu;
@@ -23,37 +23,38 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
 import java.awt.Component;
+import java.awt.Dimension;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.io.IOException;
 import java.util.List;
 
-/**
- * Main window. Owns the local view, the Stockfish player and the analysis
- * engine. All engine lifetime is managed here.
- */
 public class ChessFrame extends JFrame implements GameView {
 
     private final BoardPanel boardPanel;
     private final StatusPanel statusPanel;
+    private final ClockPanel clockPanel;
     private final AnalysisPanel analysisPanel;
     private final MoveListPanel moveListPanel;
 
     private GameController controller;
-    private EnginePlayer enginePlayer;            // playing engine, optional
-    private GameAnalyzer analyzer;                // analysis engine, optional
+    private EnginePlayer enginePlayer;
+    private GameAnalyzer analyzer;
     private JCheckBoxMenuItem engineToggleItem;
     private JCheckBoxMenuItem analysisToggleItem;
+    private TimeControl currentTimeControl = TimeControl.unlimited();
 
     public ChessFrame() {
         super("BetaChess");
 
         boardPanel = new BoardPanel(null);
         statusPanel = new StatusPanel();
+        clockPanel = new ClockPanel();
         analysisPanel = new AnalysisPanel();
         moveListPanel = new MoveListPanel();
 
-        analysisPanel.setVisible(false);   // off by default
+        clockPanel.setVisible(false);
+        analysisPanel.setVisible(false);
 
         JPanel boardWrapper = new JPanel(new GridBagLayout());
         boardWrapper.add(boardPanel);
@@ -63,15 +64,14 @@ public class ChessFrame extends JFrame implements GameView {
         gbc.gridx = 0;
         gbc.weightx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.gridy = 0;
-        side.add(statusPanel, gbc);
-        gbc.gridy = 1;
-        side.add(analysisPanel, gbc);
-        gbc.gridy = 2;
+        gbc.gridy = 0; side.add(statusPanel, gbc);
+        gbc.gridy = 1; side.add(clockPanel, gbc);
+        gbc.gridy = 2; side.add(analysisPanel, gbc);
+        gbc.gridy = 3;
         gbc.weighty = 1;
         gbc.fill = GridBagConstraints.BOTH;
         side.add(moveListPanel, gbc);
-        side.setPreferredSize(new java.awt.Dimension(240, 0));
+        side.setPreferredSize(new Dimension(250, 0));
 
         JPanel content = new JPanel(new BorderLayout(8, 8));
         content.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -84,7 +84,7 @@ public class ChessFrame extends JFrame implements GameView {
         pack();
         setLocationRelativeTo(null);
 
-        startLocalGame();
+        startLocalGame(currentTimeControl);
     }
 
     // ------------------------------------------------------------------ menu
@@ -92,11 +92,10 @@ public class ChessFrame extends JFrame implements GameView {
     private JMenuBar buildMenuBar() {
         JMenuBar bar = new JMenuBar();
 
-        // ---- Game -------------------------------------------------------
         JMenu gameMenu = new JMenu("Game");
 
-        JMenuItem localItem = new JMenuItem("New local game");
-        localItem.addActionListener(e -> startLocalGame());
+        JMenuItem localItem = new JMenuItem("New local game...");
+        localItem.addActionListener(e -> promptForNewGame());
 
         JMenuItem hostItem = new JMenuItem("Host online game...");
         hostItem.addActionListener(e -> hostGame());
@@ -115,15 +114,13 @@ public class ChessFrame extends JFrame implements GameView {
         gameMenu.add(exitItem);
         bar.add(gameMenu);
 
-        // ---- Engine -----------------------------------------------------
         JMenu engineMenu = new JMenu("Engine");
 
         engineToggleItem = new JCheckBoxMenuItem("Enable Stockfish (Black)");
         engineToggleItem.addActionListener(e -> toggleEngine(engineToggleItem.isSelected()));
 
         analysisToggleItem = new JCheckBoxMenuItem("Show analysis");
-        analysisToggleItem.addActionListener(e ->
-                toggleAnalysis(analysisToggleItem.isSelected()));
+        analysisToggleItem.addActionListener(e -> toggleAnalysis(analysisToggleItem.isSelected()));
 
         JMenuItem infoItem = new JMenuItem("Engine info...");
         infoItem.addActionListener(e -> showMessage(
@@ -138,13 +135,110 @@ public class ChessFrame extends JFrame implements GameView {
         return bar;
     }
 
-    // --------------------------------------------------------- playing engine
+    // --------------------------------------------------------------- sessions
 
-    private void toggleEngine(boolean enable) {
-        if (controller == null) {
-            engineToggleItem.setSelected(false);
+    private void promptForNewGame() {
+        TimeControl chosen = NewGameDialog.show(this, currentTimeControl);
+        if (chosen == null) return;
+        currentTimeControl = chosen;
+        startLocalGame(chosen);
+    }
+
+    private void startLocalGame(TimeControl timeControl) {
+        ChessGame game = new ChessGame();
+        installController(new GameController(game, this, timeControl));
+
+        if (engineToggleItem != null && engineToggleItem.isSelected() && enginePlayer != null) {
+            controller.setEnginePlayer(enginePlayer);
+        }
+    }
+
+    private void hostGame() {
+        String input = JOptionPane.showInputDialog(this, "Port to listen on:",
+                Protocol.DEFAULT_PORT);
+        if (input == null) return;
+        int port;
+        try {
+            port = Integer.parseInt(input.trim());
+        } catch (NumberFormatException ex) {
+            showMessage("Please enter a valid port number.");
             return;
         }
+        try {
+            new ChessServer(port).start();
+        } catch (IOException ex) {
+            showMessage("Could not start the server: " + ex.getMessage());
+            return;
+        }
+        showStatus("Server started on port " + port + " - waiting for an opponent...");
+        connectToServer("localhost", port);
+    }
+
+    private void joinGame() {
+        String host = JOptionPane.showInputDialog(this, "Server host:", "localhost");
+        if (host == null || host.trim().isEmpty()) return;
+        String portInput = JOptionPane.showInputDialog(this, "Server port:", Protocol.DEFAULT_PORT);
+        if (portInput == null) return;
+        int port;
+        try {
+            port = Integer.parseInt(portInput.trim());
+        } catch (NumberFormatException ex) {
+            showMessage("Please enter a valid port number.");
+            return;
+        }
+        connectToServer(host.trim(), port);
+    }
+
+    private void connectToServer(String host, int port) {
+        if (enginePlayer != null) {
+            int answer = JOptionPane.showConfirmDialog(this,
+                    "Online play disables the local engine. Disable Stockfish now?",
+                    "Engine", JOptionPane.YES_NO_OPTION);
+            if (answer != JOptionPane.YES_OPTION) return;
+            engineToggleItem.setSelected(false);
+            toggleEngine(false);
+        }
+        // Online clocks are not synchronised yet — play online without a clock.
+        ChessGame game = new ChessGame();
+        GameController newController = new GameController(game, this, TimeControl.unlimited());
+        try {
+            newController.connect(host, port);
+        } catch (IOException ex) {
+            showMessage("Could not connect to " + host + ":" + port + "\n" + ex.getMessage());
+            return;
+        }
+        installController(newController);
+    }
+
+    private void installController(GameController newController) {
+        if (controller != null) {
+            if (analyzer != null) controller.getGame().removeListener(analyzer);
+            controller.dispose();
+        }
+        controller = newController;
+        boardPanel.setListener(controller);
+        statusPanel.setActions(controller);
+        statusPanel.setUndoEnabled(!controller.isNetworked());
+        controller.start();
+
+        if (analyzer != null && analyzer.isEnabled()) {
+            controller.getGame().addListener(analyzer);
+            analyzer.onGameChanged(controller.getGame());
+        }
+    }
+
+    @Override
+    public void dispose() {
+        shutdownEngine();
+        shutdownAnalyzer();
+        if (controller != null) controller.dispose();
+        super.dispose();
+    }
+
+    // --------------------------------------------------------- engine wiring
+
+    private void toggleEngine(boolean enable) {
+        if (controller == null) { engineToggleItem.setSelected(false); return; }
         if (enable) {
             try {
                 EnginePlayer player = new EnginePlayer(
@@ -156,9 +250,7 @@ public class ChessFrame extends JFrame implements GameView {
                 showStatus("Stockfish enabled as Black.");
             } catch (Exception ex) {
                 engineToggleItem.setSelected(false);
-                showMessage("Could not start Stockfish:\n" + ex.getMessage()
-                        + "\n\nSet -Dbetachess.engine.path=/path/to/stockfish "
-                        + "or put Stockfish on your PATH.");
+                showMessage("Could not start Stockfish:\n" + ex.getMessage());
             }
         } else {
             shutdownEngine();
@@ -174,14 +266,10 @@ public class ChessFrame extends JFrame implements GameView {
         }
     }
 
-    // ---------------------------------------------------------- analysis mode
-
     private void toggleAnalysis(boolean enable) {
         analysisPanel.setVisible(enable);
         if (!enable) {
-            if (analyzer != null) {
-                analyzer.setEnabled(false);
-            }
+            if (analyzer != null) analyzer.setEnabled(false);
             analysisPanel.clear();
             return;
         }
@@ -210,112 +298,6 @@ public class ChessFrame extends JFrame implements GameView {
         }
     }
 
-    // --------------------------------------------------------------- sessions
-
-    private void startLocalGame() {
-        ChessGame game = new ChessGame();
-        installController(new GameController(game, this));
-
-        if (engineToggleItem != null && engineToggleItem.isSelected() && enginePlayer != null) {
-            controller.setEnginePlayer(enginePlayer);
-        }
-    }
-
-    private void hostGame() {
-        String input = JOptionPane.showInputDialog(this, "Port to listen on:",
-                Protocol.DEFAULT_PORT);
-        if (input == null) {
-            return;
-        }
-        int port;
-        try {
-            port = Integer.parseInt(input.trim());
-        } catch (NumberFormatException ex) {
-            showMessage("Please enter a valid port number.");
-            return;
-        }
-        try {
-            new ChessServer(port).start();
-        } catch (IOException ex) {
-            showMessage("Could not start the server: " + ex.getMessage());
-            return;
-        }
-        showStatus("Server started on port " + port + " - waiting for an opponent...");
-        connectToServer("localhost", port);
-    }
-
-    private void joinGame() {
-        String host = JOptionPane.showInputDialog(this, "Server host:", "localhost");
-        if (host == null || host.trim().isEmpty()) {
-            return;
-        }
-        String portInput = JOptionPane.showInputDialog(this, "Server port:",
-                Protocol.DEFAULT_PORT);
-        if (portInput == null) {
-            return;
-        }
-        int port;
-        try {
-            port = Integer.parseInt(portInput.trim());
-        } catch (NumberFormatException ex) {
-            showMessage("Please enter a valid port number.");
-            return;
-        }
-        connectToServer(host.trim(), port);
-    }
-
-    private void connectToServer(String host, int port) {
-        if (enginePlayer != null) {
-            int answer = JOptionPane.showConfirmDialog(this,
-                    "Online play disables the local engine. Disable Stockfish now?",
-                    "Engine", JOptionPane.YES_NO_OPTION);
-            if (answer != JOptionPane.YES_OPTION) {
-                return;
-            }
-            engineToggleItem.setSelected(false);
-            toggleEngine(false);
-        }
-        ChessGame game = new ChessGame();
-        GameController newController = new GameController(game, this);
-        try {
-            newController.connect(host, port);
-        } catch (IOException ex) {
-            showMessage("Could not connect to " + host + ":" + port
-                    + "\n" + ex.getMessage());
-            return;
-        }
-        installController(newController);
-    }
-
-    private void installController(GameController newController) {
-        if (controller != null) {
-            if (analyzer != null) {
-                controller.getGame().removeListener(analyzer);
-            }
-            controller.dispose();
-        }
-        controller = newController;
-        boardPanel.setListener(controller);
-        statusPanel.setActions(controller);
-        statusPanel.setUndoEnabled(!controller.isNetworked());
-        controller.start();
-
-        if (analyzer != null && analyzer.isEnabled()) {
-            controller.getGame().addListener(analyzer);
-            analyzer.onGameChanged(controller.getGame());
-        }
-    }
-
-    @Override
-    public void dispose() {
-        shutdownEngine();
-        shutdownAnalyzer();
-        if (controller != null) {
-            controller.dispose();
-        }
-        super.dispose();
-    }
-
     // ------------------------------------------------------------- GameView
 
     @Override
@@ -329,9 +311,14 @@ public class ChessFrame extends JFrame implements GameView {
         boardPanel.repaint();
     }
 
-    @Override public void showTurn(String text)                { statusPanel.setTurnText(text); }
-    @Override public void showStatus(String text)              { statusPanel.setStatusText(text); }
-    @Override public void showMoves(List<String> notation)     { moveListPanel.setMoves(notation); }
+    @Override public void showTurn(String text)            { statusPanel.setTurnText(text); }
+    @Override public void showStatus(String text)          { statusPanel.setStatusText(text); }
+    @Override public void showMoves(List<String> notation) { moveListPanel.setMoves(notation); }
+
+    @Override
+    public void showClocks(ChessClock clock) {
+        clockPanel.update(clock);
+    }
 
     @Override
     public void setFlipped(boolean flipped) {
@@ -352,7 +339,5 @@ public class ChessFrame extends JFrame implements GameView {
     }
 
     @Override
-    public Component dialogParent() {
-        return this;
-    }
+    public Component dialogParent() { return this; }
 }
