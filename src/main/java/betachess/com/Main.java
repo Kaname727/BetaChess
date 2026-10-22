@@ -1,9 +1,10 @@
 package betachess.com;
 
 import betachess.com.GUI.ChessFrame;
+import com.formdev.flatlaf.FlatLightLaf;
 
-import javax.swing.SwingUtilities;
-import javax.swing.UIManager;
+import javax.swing.*;
+import java.awt.*;
 
 /**
  * Entry point of the BetaChess application.
@@ -14,14 +15,23 @@ public final class Main {
     }
 
     public static void main(String[] args) {
+        // FlatLaf must be installed before the first Swing component exists.
+        FlatLightLaf.setup();
+        System.setProperty("flatlaf.useWindowDecorations", "true");
+        System.setProperty("flatlaf.menuBarEmbedded", "true");
+        JFrame.setDefaultLookAndFeelDecorated(true);
+        UIManager.put("Button.arc", 12);
+        UIManager.put("Component.arc", 10);
+        UIManager.put("TextComponent.arc", 10);
+        UIManager.put("Component.focusWidth", 1);
+        UIManager.put("ScrollBar.width", 12);
+        UIManager.put("ScrollBar.showButtons", false);
+        UIManager.put("defaultFont", new Font("Segoe UI", Font.PLAIN, 13));
+
+
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
-                try {
-                    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-                } catch (Exception ignored) {
-                    // keep the default look and feel
-                }
                 new ChessFrame().setVisible(true);
             }
         });

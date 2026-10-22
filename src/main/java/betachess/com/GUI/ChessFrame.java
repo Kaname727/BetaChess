@@ -12,6 +12,8 @@ import betachess.com.gamesystem.clock.TimeControl;
 import betachess.com.gamesystem.net.ChessServer;
 import betachess.com.gamesystem.net.Protocol;
 import betachess.com.piece.PieceColor;
+import javax.swing.ButtonGroup;
+import javax.swing.JRadioButtonMenuItem;
 
 import javax.swing.BorderFactory;
 import javax.swing.JCheckBoxMenuItem;
@@ -99,6 +101,7 @@ public class ChessFrame extends JFrame implements GameView {
 
     private JMenuBar buildMenuBar() {
         JMenuBar bar = new JMenuBar();
+        JMenu viewMenu = new JMenu("View");
 
         JMenu gameMenu = new JMenu("Game");
         JMenuItem localItem = new JMenuItem("New local game...");
@@ -110,6 +113,7 @@ public class ChessFrame extends JFrame implements GameView {
         JMenuItem exitItem = new JMenuItem("Exit");
         exitItem.addActionListener(e -> dispose());
         JMenuItem clearAnnotationsItem = new JMenuItem("Clear annotations");
+
         clearAnnotationsItem.addActionListener(e -> boardPanel.clearAnnotations());
         gameMenu.add(clearAnnotationsItem);
         gameMenu.add(localItem);
@@ -119,6 +123,18 @@ public class ChessFrame extends JFrame implements GameView {
         gameMenu.addSeparator();
         gameMenu.add(exitItem);
         bar.add(gameMenu);
+        JRadioButtonMenuItem lightItem = new JRadioButtonMenuItem("Light theme", true);
+        JRadioButtonMenuItem darkItem  = new JRadioButtonMenuItem("Dark theme");
+        ButtonGroup themeGroup = new ButtonGroup();
+        themeGroup.add(lightItem);
+        themeGroup.add(darkItem);
+
+        lightItem.addActionListener(e -> ThemeManager.apply(ThemeManager.Theme.LIGHT));
+        darkItem.addActionListener(e -> ThemeManager.apply(ThemeManager.Theme.DARK));
+
+        viewMenu.add(lightItem);
+        viewMenu.add(darkItem);
+        bar.add(viewMenu);
 
         JMenu engineMenu = new JMenu("Engine");
         engineToggleItem = new JCheckBoxMenuItem("Enable Stockfish (Black)");
@@ -196,7 +212,6 @@ public class ChessFrame extends JFrame implements GameView {
         }
         installController(newController);
     }
-
     private void installController(GameController newController) {
         if (controller != null) {
             if (analyzer != null) controller.getGame().removeListener(analyzer);
@@ -204,7 +219,7 @@ public class ChessFrame extends JFrame implements GameView {
         }
         controller = newController;
         boardPanel.setListener(controller);
-        statusPanel.setActions(controller);
+        statusPanel.setActions(controller);           // <-- required for buttons to work
         statusPanel.setUndoEnabled(!controller.isNetworked());
         controller.start();
 
@@ -213,6 +228,8 @@ public class ChessFrame extends JFrame implements GameView {
             analyzer.onGameChanged(controller.getGame());
         }
     }
+
+    
 
     @Override
     public void clearBoardAnnotations() {
@@ -336,4 +353,6 @@ public class ChessFrame extends JFrame implements GameView {
     }
 
     @Override public Component dialogParent() { return this; }
+
+
 }

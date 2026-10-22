@@ -2,6 +2,10 @@ package betachess.com.GUI;
 
 import betachess.com.gamesystem.clock.ChessClock;
 import betachess.com.piece.PieceColor;
+import betachess.com.GUI.ChessFrame;
+import com.formdev.flatlaf.FlatLightLaf;
+import betachess.com.Main;
+import javax.swing.UIManager;
 
 import javax.swing.BorderFactory;
 import javax.swing.JLabel;
@@ -55,11 +59,22 @@ public class ClockPanel extends JPanel {
         style(blackLabel, blackActive);
     }
 
+    private static Color activeColor() {
+        Color accent = UIManager.getColor("Component.accentColor");
+        return accent != null ? accent : new Color(0x1565C0);
+    }
+
+    private static Color inactiveColor() {
+        Color dim = UIManager.getColor("Label.disabledForeground");
+        return dim != null ? dim : new Color(0x616161);
+    }
+
     private void style(JLabel label, boolean active) {
         Font base = label.getFont().deriveFont(Font.PLAIN, 20f);
         label.setFont(active ? base.deriveFont(Font.BOLD) : base);
-        label.setForeground(active ? ACTIVE_FG : INACTIVE_FG);
+        label.setForeground(active ? activeColor() : inactiveColor());
     }
+
 
     private static String format(long millis) {
         long ms = Math.max(0, millis);
