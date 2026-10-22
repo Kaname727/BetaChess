@@ -1707,7 +1707,7 @@ C10	French Defense: Rubinstein Variation, Capablanca Line	FEN:r1bqkb1r/ppp2ppp/4
 C10	French Defense: Rubinstein Variation, Ellis Gambit	FEN:rnbqkbnr/ppp2ppp/8/4p3/3PN3/8/PPP2PPP/R1BQKBNR w KQkq -
 C10	French Defense: Rubinstein Variation, Fort Knox Variation	FEN:rn1qkbnr/ppp2ppp/2b1p3/8/3PN3/5N2/PPP2PPP/R1BQKB1R w KQkq -
 C10	French Defense: Rubinstein Variation, Kasparov Attack	FEN:r1bqkb1r/ppp2ppp/4pn2/8/3P4/2P2N2/PP3PPP/R1BQKB1R b KQkq -
-C10 Alien Gambit: Bonjor Variation	FEN:rnbqkb1r/ppp2Np1/4pn1p/8/3P4/8/PPP2PPP/R1BQKBNR b KQkq -
+C10 French Defense: Alien Gambit, Bonjor Variation	FEN:rnbqkb1r/ppp2Np1/4pn1p/8/3P4/8/PPP2PPP/R1BQKBNR b KQkq -
 C10	French Defense: Rubinstein Variation, Maric Variation	FEN:rnb1kbnr/ppp2ppp/4p3/3q4/3PN3/8/PPP2PPP/R1BQKBNR w KQkq -
 C11	French Defense: Classical Variation	FEN:rnbqkb1r/ppp2ppp/4pn2/3p4/3PP3/2N5/PPP2PPP/R1BQKBNR w KQkq -
 C11	French Defense: Classical Variation, Delayed Exchange Variation	FEN:rnbqkb1r/ppp2ppp/4pn2/3P4/3P4/2N5/PPP2PPP/R1BQKBNR b KQkq -
