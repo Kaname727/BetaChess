@@ -12,6 +12,10 @@ import betachess.com.gamesystem.clock.TimeControl;
 import betachess.com.gamesystem.net.ChessServer;
 import betachess.com.gamesystem.net.Protocol;
 import betachess.com.piece.PieceColor;
+import betachess.com.gamesystem.record.GameRecord;
+import betachess.com.gamesystem.record.GameRecordStore;
+import betachess.com.gamesystem.record.PgnReader;
+import betachess.com.gamesystem.record.PgnWriter;
 
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
@@ -139,6 +143,26 @@ public class ChessFrame extends JFrame implements GameView {
         JMenuItem clearAnnotationsItem = new JMenuItem("Clear annotations");
         clearAnnotationsItem.addActionListener(e -> boardPanel.clearAnnotations());
         JMenuItem exitItem = new JMenuItem("Exit");
+        JMenuItem saveItem = new JMenuItem("Save game...");
+        saveItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(
+                java.awt.event.KeyEvent.VK_S, java.awt.event.InputEvent.CTRL_DOWN_MASK));
+        saveItem.addActionListener(e -> saveCurrentGame());
+
+        JMenuItem openItem = new JMenuItem("Open saved game...");
+        openItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(
+                java.awt.event.KeyEvent.VK_O, java.awt.event.InputEvent.CTRL_DOWN_MASK));
+        openItem.addActionListener(e -> openSavedGame());
+
+        gameMenu.add(localItem);
+        gameMenu.add(hostItem);
+        gameMenu.add(joinItem);
+        gameMenu.addSeparator();
+        gameMenu.add(saveItem);
+        gameMenu.add(openItem);
+        gameMenu.addSeparator();
+        gameMenu.add(clearAnnotationsItem);
+        gameMenu.addSeparator();
+        gameMenu.add(exitItem);
         exitItem.addActionListener(e -> dispose());
         gameMenu.add(localItem);
         gameMenu.addSeparator();
@@ -186,6 +210,69 @@ public class ChessFrame extends JFrame implements GameView {
         if (chosen == null) return;
         currentTimeControl = chosen;
         startLocalGame(chosen);
+    }
+    private void saveCurrentGame() {
+        if (controller == null) return;
+        ChessGame game = controller.getGame();
+
+        GameRecord record = PgnWriter.toRecord(
+                game,
+                whiteName(),
+                blackName(),
+                controller.getTimeControl(),
+                controller.isNetworked() ? "Online" : "Local");
+
+        if (record.plyCount() == 0) {
+            int answer = JOptionPane.showConfirmDialog(this,
+                    "No moves have been played yet. Save anyway?", "Save game",
+                    JOptionPane.YES_NO_OPTION);
+            if (answer != JOptionPane.YES_OPTION) return;
+        }
+
+        java.nio.file.Path path = GameRecordStore.promptForSavePath(this, record);
+        if (path == null) return;
+
+        try {
+            PgnWriter.write(record, path);
+            showStatus("Saved to " + path.getFileName());
+        } catch (IOException ex) {
+            showMessage("Could not save: " + ex.getMessage());
+        }
+    }
+
+    private void openSavedGame() {
+        java.nio.file.Path path = GameRecordStore.promptForOpenPath(this);
+        if (path == null) return;
+
+        try {
+            GameRecord record = PgnReader.read(path);
+            ReviewFrame frame = new ReviewFrame(record, path.getFileName().toString());
+            frame.setVisible(true);
+        } catch (IOException ex) {
+            showMessage("Could not open: " + ex.getMessage());
+        }
+    }
+
+    private String whiteName() {
+        if (controller == null) return "White";
+        if (controller.isNetworked()) {
+            return controller.getLocalColor() == PieceColor.WHITE ? "You" : "Opponent";
+        }
+        if (enginePlayer != null && enginePlayer.getEngineColor() == PieceColor.WHITE) {
+            return "Stockfish";
+        }
+        return "White";
+    }
+
+    private String blackName() {
+        if (controller == null) return "Black";
+        if (controller.isNetworked()) {
+            return controller.getLocalColor() == PieceColor.BLACK ? "You" : "Opponent";
+        }
+        if (enginePlayer != null && enginePlayer.getEngineColor() == PieceColor.BLACK) {
+            return "Stockfish";
+        }
+        return "Black";
     }
 
     private void startLocalGame(TimeControl timeControl) {

@@ -53,6 +53,9 @@ public final class GameController
         this.view = view;
         this.timeControl = timeControl == null ? TimeControl.unlimited() : timeControl;
     }
+    public PieceColor getLocalColor() {
+        return localColor;
+    }
 
     // ------------------------------------------------------------ life cycle
 
