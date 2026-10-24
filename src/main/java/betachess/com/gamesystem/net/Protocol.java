@@ -15,7 +15,9 @@ public final class Protocol {
     public static final String DRAW_OFFER   = "DRAW_OFFER";   // payload: empty
     public static final String DRAW_ACCEPT  = "DRAW_ACCEPT";  // payload: empty
     public static final String DRAW_DECLINE = "DRAW_DECLINE"; // payload: empty
-    public static final String INFO         = "INFO";         // payload: free text
+    public static final String INFO         = "INFO";
+    public static final String TIME_CONTROL = "TIME_CONTROL";  // label|initialMs|incrementMs
+    public static final String TIMEOUT      = "TIMEOUT";       // empty; sender concedes// payload: free text
 
     private static final char SEPARATOR = '|';
 

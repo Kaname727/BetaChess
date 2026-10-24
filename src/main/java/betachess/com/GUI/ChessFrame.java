@@ -197,30 +197,50 @@ public class ChessFrame extends JFrame implements GameView {
     }
 
     private void hostGame() {
+        // 1. Pick a time control
+        TimeControl chosen = NewGameDialog.show(this, currentTimeControl);
+        if (chosen == null) return;
+        currentTimeControl = chosen;
+
+        // 2. Pick a port
         String input = JOptionPane.showInputDialog(this, "Port to listen on:",
                 Protocol.DEFAULT_PORT);
         if (input == null) return;
         int port;
         try { port = Integer.parseInt(input.trim()); }
-        catch (NumberFormatException ex) { showMessage("Please enter a valid port number."); return; }
+        catch (NumberFormatException ex) {
+            showMessage("Please enter a valid port number.");
+            return;
+        }
+
+        // 3. Start the relay
         try { new ChessServer(port).start(); }
-        catch (IOException ex) { showMessage("Could not start the server: " + ex.getMessage()); return; }
-        showStatus("Server started on port " + port + " - waiting for an opponent...");
-        connectToServer("localhost", port);
+        catch (IOException ex) {
+            showMessage("Could not start the server: " + ex.getMessage());
+            return;
+        }
+        showStatus("Server started on port " + port
+                + " (" + chosen.getLabel() + ") - waiting for an opponent...");
+        connectToServer("localhost", port, chosen);
     }
 
     private void joinGame() {
         String host = JOptionPane.showInputDialog(this, "Server host:", "localhost");
         if (host == null || host.trim().isEmpty()) return;
-        String portInput = JOptionPane.showInputDialog(this, "Server port:", Protocol.DEFAULT_PORT);
+        String portInput = JOptionPane.showInputDialog(this, "Server port:",
+                Protocol.DEFAULT_PORT);
         if (portInput == null) return;
         int port;
         try { port = Integer.parseInt(portInput.trim()); }
-        catch (NumberFormatException ex) { showMessage("Please enter a valid port number."); return; }
-        connectToServer(host.trim(), port);
+        catch (NumberFormatException ex) {
+            showMessage("Please enter a valid port number.");
+            return;
+        }
+        // Time control is unknown until the host announces it.
+        connectToServer(host.trim(), port, TimeControl.unlimited());
     }
 
-    private void connectToServer(String host, int port) {
+    private void connectToServer(String host, int port, TimeControl tc) {
         if (enginePlayer != null) {
             int answer = JOptionPane.showConfirmDialog(this,
                     "Online play disables the local engine. Disable Stockfish now?",
@@ -230,10 +250,11 @@ public class ChessFrame extends JFrame implements GameView {
             toggleEngine(false);
         }
         ChessGame game = new ChessGame();
-        GameController newController = new GameController(game, this, TimeControl.unlimited());
+        GameController newController = new GameController(game, this, tc);
         try { newController.connect(host, port); }
         catch (IOException ex) {
-            showMessage("Could not connect to " + host + ":" + port + "\n" + ex.getMessage());
+            showMessage("Could not connect to " + host + ":" + port
+                    + "\n" + ex.getMessage());
             return;
         }
         installController(newController);

@@ -36,6 +36,10 @@ public final class TimeControl {
                 increment(5, 5)
         };
     }
+    /** Rebuild a TimeControl from a network message. */
+    public static TimeControl custom(String label, long initialMillis, long incrementMillis) {
+        return new TimeControl(initialMillis, incrementMillis, label == null ? "custom" : label);
+    }
 
     public boolean isUnlimited()         { return initialMillis == 0; }
     public long    getInitialMillis()    { return initialMillis; }

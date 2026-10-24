@@ -20,6 +20,16 @@ public final class ChessClock {
         this.whiteMillis = timeControl.getInitialMillis();
         this.blackMillis = timeControl.getInitialMillis();
     }
+    public void syncAndSwitch(PieceColor mover, long postIncrementMillis, PieceColor newActive) {
+        if (mover == PieceColor.WHITE) {
+            whiteMillis = Math.max(0, postIncrementMillis);
+        } else {
+            blackMillis = Math.max(0, postIncrementMillis);
+        }
+        activeSide = newActive;
+        lastTickNanos = System.nanoTime();
+        running = true;
+    }
 
     public void start(PieceColor side) {
         this.activeSide = side;
