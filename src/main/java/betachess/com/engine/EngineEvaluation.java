@@ -2,21 +2,24 @@ package betachess.com.engine;
 
 /**
  * One snapshot parsed from a UCI "info ..." line.
- * The score is from the perspective of the side to move.
+ * Score is from the side-to-move's perspective.
  */
 public final class EngineEvaluation {
 
-    private final int depth;
-    private final Score score;
-    private final String bestMoveUci;   // first move of the PV, may be null
+    private final int    depth;
+    private final int    multipv;    // 1 = best line
+    private final Score  score;
+    private final String bestMoveUci;
 
-    public EngineEvaluation(int depth, Score score, String bestMoveUci) {
-        this.depth = depth;
-        this.score = score;
+    public EngineEvaluation(int depth, int multipv, Score score, String bestMoveUci) {
+        this.depth       = depth;
+        this.multipv     = multipv;
+        this.score       = score;
         this.bestMoveUci = bestMoveUci;
     }
 
-    public int getDepth()          { return depth; }
-    public Score getScore()        { return score; }
+    public int    getDepth()       { return depth; }
+    public int    getMultipv()     { return multipv; }
+    public Score  getScore()       { return score; }
     public String getBestMoveUci() { return bestMoveUci; }
 }

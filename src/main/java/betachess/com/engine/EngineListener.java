@@ -1,7 +1,7 @@
 package betachess.com.engine;
 
 /**
- * Called on the engine's background thread when a move has been computed.
+ * Callback for {@code bestmove ...} lines, invoked on the engine's reader thread.
  * The implementation is responsible for hopping to the Swing EDT.
  */
 public interface EngineListener {

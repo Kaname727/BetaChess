@@ -1,14 +1,17 @@
 package betachess.com.GUI;
 
+import betachess.com.engine.AccuracyCalculator;
+import betachess.com.engine.EngineEvaluation;
 import betachess.com.engine.GameReviewer;
 import betachess.com.engine.MoveAssessment;
 import betachess.com.engine.MoveClassification;
+import betachess.com.engine.Score;
 import betachess.com.gamesystem.ChessGame;
 import betachess.com.gamesystem.GameSnapshot;
 import betachess.com.gamesystem.Move;
 import betachess.com.gamesystem.MoveRecord;
-import betachess.com.gamesystem.Position;
 import betachess.com.gamesystem.San;
+import betachess.com.piece.PieceColor;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -38,29 +41,39 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Standalone analysis window: steps through the game and shows Stockfish's
- * verdict on every ply. Can be opened from a live game or a PGN.
+ * Standalone analysis window. Steps through the game and shows Stockfish's
+ * verdict on every ply, an eval bar, live accuracy, and the top-5 engine moves.
  */
 public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
 
-    private static final int DEFAULT_DEPTH = 14;
+    private static final int    DEFAULT_DEPTH = 14;
+    private static final String PLACEHOLDER = "-";
 
-    // --- game replay ---------------------------------------------------
-    private final List<GameSnapshot> snapshots = new ArrayList<>();
-    private final List<Move>         moves     = new ArrayList<>();
-    private final List<String>       notation  = new ArrayList<>();
+    // --- replay --------------------------------------------------------
+    private final List<GameSnapshot>   snapshots   = new ArrayList<>();
+    private final List<Move>           moves       = new ArrayList<>();
+    private final List<String>         notation    = new ArrayList<>();
     private final List<MoveAssessment> assessments = new ArrayList<>();
 
-    // --- UI ------------------------------------------------------------
-    private final BoardPanel boardPanel = new BoardPanel(null);
+    // --- running accuracy accumulators ---------------------------------
+    private double whiteAccSum   = 0;
+    private int    whiteAccCount = 0;
+    private double blackAccSum   = 0;
+    private int    blackAccCount = 0;
+
+    // --- widgets -------------------------------------------------------
+    private final EvalBar       evalBar        = new EvalBar();
+    private final BoardPanel    boardPanel     = new BoardPanel(null);
+    private final AccuracyPanel accuracyPanel  = new AccuracyPanel();
+    private final TopMovesPanel topMovesPanel  = new TopMovesPanel();
     private final DefaultListModel<String> moveModel = new DefaultListModel<>();
-    private final JList<String> moveList = new JList<>(moveModel);
+    private final JList<String> moveList       = new JList<>(moveModel);
     private final JLabel positionLabel       = new JLabel("Start position", SwingConstants.CENTER);
-    private final JLabel evalLabel           = new JLabel("-");
-    private final JLabel bestMoveLabel       = new JLabel("-");
-    private final JLabel playedMoveLabel     = new JLabel("-");
-    private final JLabel classificationLabel = new JLabel("-");
-    private final JLabel cpLossLabel         = new JLabel("-");
+    private final JLabel evalLabel           = new JLabel(PLACEHOLDER);
+    private final JLabel bestMoveLabel       = new JLabel(PLACEHOLDER);
+    private final JLabel playedMoveLabel     = new JLabel(PLACEHOLDER);
+    private final JLabel classificationLabel = new JLabel(PLACEHOLDER);
+    private final JLabel cpLossLabel         = new JLabel(PLACEHOLDER);
     private final JProgressBar progressBar   = new JProgressBar();
     private final JButton analyzeBtn         = new JButton("Start analysis");
     private final JButton stopBtn            = new JButton("Stop");
@@ -80,6 +93,7 @@ public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
         this.enginePath     = enginePath;
 
         buildPositions(game);
+
         setLayout(new BorderLayout(6, 6));
         add(buildHeader(), BorderLayout.NORTH);
         add(buildCenter(), BorderLayout.CENTER);
@@ -87,10 +101,12 @@ public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
 
         installKeyBindings();
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-        setMinimumSize(new Dimension(1024, 760));
+        setMinimumSize(new Dimension(1120, 800));
         pack();
         setLocationRelativeTo(null);
 
+        accuracyPanel.clear();
+        evalBar.clear();
         gotoPly(0);
         startAnalysis();
     }
@@ -158,18 +174,30 @@ public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
     // ------------------------------------------------------------ center
 
     private JSplitPane buildCenter() {
+        // Board + eval bar
+        JPanel boardWithEval = new JPanel(new BorderLayout(4, 0));
+        boardWithEval.setOpaque(false);
+        boardWithEval.add(evalBar, BorderLayout.WEST);
+        boardWithEval.add(boardPanel, BorderLayout.CENTER);
+
+        // Right column — accuracy card strip on top, then detail + top moves + move list
+        JPanel rightTop = new JPanel();
+        rightTop.setLayout(new BoxLayout(rightTop, BoxLayout.Y_AXIS));
+        rightTop.add(accuracyPanel);
+        rightTop.add(Box.createVerticalStrut(4));
+        rightTop.add(buildDetailPanel());
+        rightTop.add(Box.createVerticalStrut(4));
+        rightTop.add(topMovesPanel);
+
         JScrollPane moveScroll = new JScrollPane(moveList);
         moveScroll.setBorder(BorderFactory.createTitledBorder("Moves"));
-        moveScroll.setPreferredSize(new Dimension(260, 0));
 
         JPanel right = new JPanel(new BorderLayout(0, 6));
+        right.add(rightTop, BorderLayout.NORTH);
         right.add(moveScroll, BorderLayout.CENTER);
-        right.add(buildDetailPanel(), BorderLayout.NORTH);
+        right.setPreferredSize(new Dimension(320, 0));
 
-        JPanel boardWrapper = new JPanel(new BorderLayout());
-        boardWrapper.add(boardPanel, BorderLayout.CENTER);
-
-        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, boardWrapper, right);
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, boardWithEval, right);
         split.setResizeWeight(1.0);
         split.setBorder(null);
         return split;
@@ -179,12 +207,12 @@ public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
         JPanel p = new JPanel();
         p.setBorder(BorderFactory.createTitledBorder("Current move"));
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
-        p.add(detailRow("Eval:",       evalLabel));
-        p.add(detailRow("Played:",     playedMoveLabel));
-        p.add(detailRow("Best:",       bestMoveLabel));
-        p.add(detailRow("Verdict:",    classificationLabel));
-        p.add(detailRow("CP loss:",    cpLossLabel));
-        p.setPreferredSize(new Dimension(260, 170));
+        p.add(detailRow("Eval:",    evalLabel));
+        p.add(detailRow("Played:",  playedMoveLabel));
+        p.add(detailRow("Best:",    bestMoveLabel));
+        p.add(detailRow("Verdict:", classificationLabel));
+        p.add(detailRow("CP loss:", cpLossLabel));
+        p.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
         return p;
     }
 
@@ -209,39 +237,50 @@ public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
         JPanel p = new JPanel(new BorderLayout(6, 6));
         p.setBorder(BorderFactory.createEmptyBorder(4, 12, 8, 12));
 
+        // Navigation row
         JToolBar nav = new JToolBar();
         nav.setFloatable(false);
         JButton first = new JButton("<<");
         JButton prev  = new JButton("<");
         JButton next  = new JButton(">");
         JButton last  = new JButton(">>");
+        JButton clear = new JButton("Clear annotations");
         first.addActionListener(e -> gotoPly(0));
         prev .addActionListener(e -> gotoPly(currentPly - 1));
         next .addActionListener(e -> gotoPly(currentPly + 1));
         last .addActionListener(e -> gotoPly(snapshots.size() - 1));
+        clear.addActionListener(e -> {
+            boardPanel.clearAnnotations();
+            boardPanel.repaint();
+        });
+
         nav.add(first);
         nav.add(prev);
         nav.add(next);
         nav.add(last);
         nav.addSeparator();
         nav.add(positionLabel);
+        nav.addSeparator();
+        nav.add(clear);
 
+        // Analyze controls
         analyzeBtn.addActionListener(e -> startAnalysis());
         stopBtn.addActionListener(e -> stopAnalysis());
         stopBtn.setEnabled(false);
-        JPanel buttons = new JPanel();
-        buttons.setLayout(new BoxLayout(buttons, BoxLayout.X_AXIS));
-        buttons.add(analyzeBtn);
-        buttons.add(Box.createHorizontalStrut(6));
-        buttons.add(stopBtn);
-        buttons.add(Box.createHorizontalStrut(12));
+
+        JPanel controls = new JPanel();
+        controls.setLayout(new BoxLayout(controls, BoxLayout.X_AXIS));
+        controls.add(analyzeBtn);
+        controls.add(Box.createHorizontalStrut(6));
+        controls.add(stopBtn);
+        controls.add(Box.createHorizontalStrut(12));
         progressBar.setPreferredSize(new Dimension(220, 18));
         progressBar.setStringPainted(true);
-        buttons.add(progressBar);
-        buttons.add(Box.createHorizontalGlue());
+        controls.add(progressBar);
+        controls.add(Box.createHorizontalGlue());
 
         p.add(nav, BorderLayout.NORTH);
-        p.add(buttons, BorderLayout.SOUTH);
+        p.add(controls, BorderLayout.SOUTH);
         return p;
     }
 
@@ -270,8 +309,13 @@ public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
             progressBar.setString("No moves to analyse");
             return;
         }
-        // Reset any previous assessments
         for (int i = 0; i < assessments.size(); i++) assessments.set(i, null);
+        whiteAccSum = 0; whiteAccCount = 0;
+        blackAccSum = 0; blackAccCount = 0;
+        accuracyPanel.clear();
+        topMovesPanel.clear();
+        evalBar.clear();
+
         progressBar.setValue(0);
         progressBar.setString("0 / " + notation.size());
         analyzeBtn.setEnabled(false);
@@ -297,11 +341,22 @@ public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
         progressBar.setString(completed + " / " + total);
     }
 
-    @Override public void onPlyAssessed(MoveAssessment assessment) {
-        assessments.set(assessment.getPly() + 1, assessment);
+    @Override public void onPlyAssessed(MoveAssessment a) {
+        assessments.set(a.getPly() + 1, a);
         moveList.repaint();
-        if (currentPly == assessment.getPly() + 1) {
-            updateDetail(assessment);
+
+        if (a.getClassification() != MoveClassification.BOOK) {
+            double acc = AccuracyCalculator.accuracy(a.getEvalBefore(), a.getEvalAfter());
+            boolean whiteMover = (a.getPly() % 2 == 0);
+            if (whiteMover) { whiteAccSum += acc; whiteAccCount++; }
+            else            { blackAccSum += acc; blackAccCount++; }
+        }
+        updateAccuracyDisplay();
+
+        if (currentPly == a.getPly() + 1) {
+            updateDetail(a);
+            updateEvalBar(currentPly);
+            updateTopMoves(currentPly);
         }
     }
 
@@ -317,6 +372,16 @@ public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
         progressBar.setString(message);
     }
 
+    private void updateAccuracyDisplay() {
+        double w = whiteAccCount == 0 ? 100.0 : whiteAccSum / whiteAccCount;
+        double b = blackAccCount == 0 ? 100.0 : blackAccSum / blackAccCount;
+        if (whiteAccCount == 0 && blackAccCount == 0) {
+            accuracyPanel.clear();
+        } else {
+            accuracyPanel.setValues(w, b);
+        }
+    }
+
     // --------------------------------------------------------------- goto
 
     private void gotoPly(int ply) {
@@ -326,29 +391,32 @@ public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
 
         boardPanel.setBoard(s.getBoard());
         boardPanel.setSelected(null);
-        boardPanel.setLegalTargets(Collections.emptyList());
+        boardPanel.setLegalTargets(Collections.<betachess.com.gamesystem.Position>emptyList());
         boardPanel.setLastMove(lastMove);
         boardPanel.setCheckSquare(
-                MoveInCheck(s) ? s.getBoard().findKing(s.getSideToMove()) : null);
+                betachess.com.gamesystem.MoveGenerator.isInCheck(s.getBoard(), s.getSideToMove())
+                        ? s.getBoard().findKing(s.getSideToMove()) : null);
         boardPanel.clearArrows();
 
-        // Draw arrows from the assessment of the move that just led here
         MoveAssessment justPlayed = currentPly > 0 ? assessments.get(currentPly) : null;
         if (justPlayed != null) {
             Move best = safeParse(justPlayed.getBestMoveUci());
             if (best != null) {
                 Color arrow = justPlayed.playedBestMove()
-                        ? BoardTheme.ARROW_GREEN
-                        : BoardTheme.ARROW_BLUE;
+                        ? BoardTheme.ARROW_GREEN : BoardTheme.ARROW_BLUE;
                 boardPanel.addArrow(best.getFrom(), best.getTo(), arrow);
             }
             if (!justPlayed.playedBestMove()) {
-                boardPanel.addArrow(justPlayed.getPlayedMove().getFrom(),
-                        justPlayed.getPlayedMove().getTo(), BoardTheme.ARROW_RED);
+                boardPanel.addArrow(
+                        justPlayed.getPlayedMove().getFrom(),
+                        justPlayed.getPlayedMove().getTo(),
+                        BoardTheme.ARROW_RED);
             }
         }
-
         boardPanel.repaint();
+
+        updateEvalBar(currentPly);
+        updateTopMoves(currentPly);
 
         if (currentPly == 0) {
             positionLabel.setText("Start position");
@@ -366,27 +434,98 @@ public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
         }
     }
 
-    private static boolean MoveInCheck(GameSnapshot s) {
-        return betachess.com.gamesystem.MoveGenerator
-                .isInCheck(s.getBoard(), s.getSideToMove());
-    }
-
     private static Move safeParse(String uci) {
         if (uci == null) return null;
         try { return Move.fromUci(uci); }
         catch (RuntimeException ex) { return null; }
     }
 
+    // -------------------------------------------------------------- eval bar
+
+    private void updateEvalBar(int ply) {
+        int eval = evalAtPly(ply);
+        if (eval == Integer.MIN_VALUE) {
+            evalBar.clear();
+        } else if (Math.abs(eval) >= 10000) {
+            evalBar.setMate(eval > 0);
+        } else {
+            evalBar.setCentipawns(eval);
+        }
+    }
+
+    /** White-POV eval at the given position, or Integer.MIN_VALUE if unknown. */
+    private int evalAtPly(int ply) {
+        if (ply == 0) {
+            if (assessments.size() > 1 && assessments.get(1) != null) {
+                return assessments.get(1).getEvalBefore();
+            }
+            return Integer.MIN_VALUE;
+        }
+        if (ply < assessments.size() && assessments.get(ply) != null) {
+            MoveAssessment a = assessments.get(ply);
+            boolean whiteMover = (a.getPly() % 2 == 0);
+            return whiteMover ? a.getEvalAfter() : -a.getEvalAfter();
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    // ------------------------------------------------------------- top moves
+
+    private void updateTopMoves(int ply) {
+        // Top moves for position at `ply` are the "before" analysis of ply+1
+        if (ply + 1 >= assessments.size() || assessments.get(ply + 1) == null) {
+            topMovesPanel.clear();
+            return;
+        }
+        MoveAssessment next = assessments.get(ply + 1);
+        List<EngineEvaluation> top = next.getTopMoves();
+        if (top.isEmpty()) {
+            topMovesPanel.clear();
+            return;
+        }
+        GameSnapshot before = snapshots.get(ply);
+        Move played = next.getPlayedMove();
+
+        List<TopMovesPanel.Entry> entries = new ArrayList<>();
+        for (int i = 0; i < top.size() && i < 5; i++) {
+            EngineEvaluation e = top.get(i);
+            String san = uciToSan(e.getBestMoveUci(), before);
+            boolean isPlayed = played != null && e.getBestMoveUci() != null
+                    && e.getBestMoveUci().equals(played.toUci());
+            entries.add(new TopMovesPanel.Entry(san, formatScore(e.getScore()),
+                    isPlayed, i == 0));
+        }
+        topMovesPanel.setEntries(entries);
+    }
+
+    private static String uciToSan(String uci, GameSnapshot snap) {
+        if (uci == null) return PLACEHOLDER;
+        try {
+            Move m = Move.fromUci(uci);
+            return San.of(snap.getBoard(), m);
+        } catch (RuntimeException ex) {
+            return uci;
+        }
+    }
+
+    private static String formatScore(Score score) {
+        if (score == null) return PLACEHOLDER;
+        if (score.getType() == Score.Type.MATE) {
+            int m = score.getValue();
+            return (m >= 0 ? "M" : "-M") + Math.abs(m);
+        }
+        return String.format("%+.2f", score.toCentipawns() / 100.0);
+    }
+
     // ------------------------------------------------------------ detail
 
     private void updateDetail(MoveAssessment a) {
-        if (a == null) {
-            clearDetail();
-            return;
-        }
+        if (a == null) { clearDetail(); return; }
         evalLabel.setText(formatEval(a.getEvalBefore()));
         playedMoveLabel.setText(a.getPlayedSan());
-        bestMoveLabel.setText(a.getBestMoveSan() == null ? "-" : a.getBestMoveSan());
+        String best = a.getBestMoveUci();
+        GameSnapshot before = snapshots.get(a.getPly());
+        bestMoveLabel.setText(best == null ? PLACEHOLDER : uciToSan(best, before));
         classificationLabel.setText(a.getClassification().name());
         classificationLabel.setForeground(a.getClassification().getColor());
         cpLossLabel.setText(a.getCentipawnLoss() + " cp");
@@ -394,12 +533,12 @@ public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
     }
 
     private void clearDetail() {
-        evalLabel.setText("-");
-        playedMoveLabel.setText("-");
-        bestMoveLabel.setText("-");
-        classificationLabel.setText("-");
+        evalLabel.setText(PLACEHOLDER);
+        playedMoveLabel.setText(PLACEHOLDER);
+        bestMoveLabel.setText(PLACEHOLDER);
+        classificationLabel.setText(PLACEHOLDER);
         classificationLabel.setForeground(Color.GRAY);
-        cpLossLabel.setText("-");
+        cpLossLabel.setText(PLACEHOLDER);
         cpLossLabel.setForeground(Color.GRAY);
     }
 
@@ -421,8 +560,7 @@ public class AnalysisFrame extends JFrame implements GameReviewer.Listener {
             MoveAssessment a = (index >= 0 && index + 1 < assessments.size())
                     ? assessments.get(index + 1) : null;
             if (a != null) {
-                String symbol = a.getClassification().getSymbol();
-                setText(value + "  " + symbol);
+                setText(value + "  " + a.getClassification().getSymbol());
                 if (!isSelected) setForeground(a.getClassification().getColor());
             } else {
                 setText(String.valueOf(value));

@@ -38,6 +38,10 @@ public class AccuracyPanel extends JPanel {
         whiteCard.setAccuracy(snapshot.whiteAccuracy);
         blackCard.setAccuracy(snapshot.blackAccuracy);
     }
+    public void setValues(double white, double black) {
+        whiteCard.setAccuracy(white);
+        blackCard.setAccuracy(black);
+    }
 
     public void clear() {
         whiteCard.reset();

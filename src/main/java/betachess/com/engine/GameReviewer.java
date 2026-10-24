@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * Walks a game ply by ply with a dedicated Stockfish instance and produces
- * one {@link MoveAssessment} per move. All listener callbacks run on the EDT.
+ * one {@link MoveAssessment} per move. Listener callbacks run on the EDT.
  */
 public final class GameReviewer {
 
@@ -23,6 +23,9 @@ public final class GameReviewer {
         void onComplete(List<MoveAssessment> assessments);
         void onError(String message);
     }
+
+    /** How many alternative lines we ask Stockfish for at each "before" position. */
+    public static final int TOP_MOVES = 5;
 
     private final String enginePath;
     private final int    depth;
@@ -42,15 +45,13 @@ public final class GameReviewer {
         worker.start();
     }
 
-    public void cancel() {
-        cancelled = true;
-    }
+    public void cancel() { cancelled = true; }
 
     public boolean isRunning() {
         return worker != null && worker.isAlive();
     }
 
-    // ------------------------------------------------------------------ core
+    // ---------------------------------------------------------------- core
 
     private void run(List<MoveRecord> history, Listener listener) {
         List<MoveAssessment> results = new ArrayList<>();
@@ -59,7 +60,7 @@ public final class GameReviewer {
             engine.newGame();
 
             ChessGame replay = new ChessGame();
-            OpeningBook book  = OpeningBook.getDefault();
+            OpeningBook book = OpeningBook.getDefault();
             int total = history.size();
 
             for (int i = 0; i < total; i++) {
@@ -71,43 +72,40 @@ public final class GameReviewer {
                 Move move = history.get(i).getMove();
                 PieceColor mover = replay.getSideToMove();
 
-                // Position BEFORE the move
                 String fenBefore = FenSerializer.toFen(
                         replay.getBoard(), replay.getSideToMove(),
                         replay.getCastlingRights(), replay.getEnPassantTarget(),
                         replay.getHalfmoveClock(), replay.getFullmoveNumber());
 
-                UciEngine.BlockingResult before =
-                        engine.analyzeBlocking(fenBefore, depth);
-                if (before == null || before.evaluation == null) {
-                    notifyError(listener, "Engine did not answer at ply " + i);
+                // MultiPV=5 for the "before" position (we show top choices).
+                engine.setMultiPv(TOP_MOVES);
+                List<EngineEvaluation> before = engine.analyzeBlocking(fenBefore, depth);
+                if (before.isEmpty()) {
+                    notifyError(listener, "Engine did not answer at ply " + (i + 1));
                     return;
                 }
 
                 String playedSan = San.of(replay.getBoard(), move);
                 replay.makeMove(move);
 
-                // Position AFTER the move
                 String fenAfter = FenSerializer.toFen(
                         replay.getBoard(), replay.getSideToMove(),
                         replay.getCastlingRights(), replay.getEnPassantTarget(),
                         replay.getHalfmoveClock(), replay.getFullmoveNumber());
 
-                UciEngine.BlockingResult after =
-                        engine.analyzeBlocking(fenAfter, depth);
-                if (after == null || after.evaluation == null) {
-                    notifyError(listener, "Engine did not answer at ply " + i);
+                // MultiPV=1 for the "after" position — we only need the eval.
+                engine.setMultiPv(1);
+                List<EngineEvaluation> after = engine.analyzeBlocking(fenAfter, depth);
+                if (after.isEmpty()) {
+                    notifyError(listener, "Engine did not answer at ply " + (i + 1));
                     return;
                 }
 
-                int evalBefore = signForMover(before.evaluation.getScore(), mover);
-                int evalAfter  = signForMover(after.evaluation.getScore(), mover);
+                int evalBefore = before.get(0).getScore().toCentipawns();
+                int evalAfter  = -after.get(0).getScore().toCentipawns();
 
                 MoveAssessment assessment = MoveAssessment.build(
-                        i, move, playedSan,
-                        before.bestMoveUci,
-                        bestMoveSanOrNull(before.bestMoveUci, mover, fenBefore),
-                        evalBefore, evalAfter, mover);
+                        i, move, playedSan, before, evalBefore, evalAfter);
 
                 if (book.lookup(fenBefore) != null) {
                     assessment = assessment.asBook();
@@ -126,30 +124,6 @@ public final class GameReviewer {
             SwingUtilities.invokeLater(() -> listener.onComplete(finalList));
         } catch (Exception ex) {
             notifyError(listener, ex.getMessage() == null ? ex.toString() : ex.getMessage());
-        }
-    }
-
-    // --------------------------------------------------------------- helpers
-
-    /** Engine score is from side-to-move; convert to the mover's POV. */
-    private static int signForMover(Score score, PieceColor mover) {
-        int cp = score.toCentipawns();
-        // After the move, side-to-move is the opponent, so flip to keep mover's POV.
-        // Before the move, side-to-move == mover, so no flip needed.
-        // Caller passes the raw cp; the flip is applied by which eval is passed in.
-        return cp;
-    }
-
-    private static String bestMoveSanOrNull(String uci, PieceColor mover, String fenBefore) {
-        if (uci == null) return null;
-        try {
-            Move m = Move.fromUci(uci);
-            // Rebuild the position to translate cleanly.
-            ChessGame tmp = ChessGame.fromFen(fenBefore);
-            if (tmp == null) return uci;
-            return San.of(tmp.getBoard(), m);
-        } catch (RuntimeException ex) {
-            return uci;
         }
     }
 
