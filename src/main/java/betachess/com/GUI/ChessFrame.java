@@ -16,6 +16,7 @@ import betachess.com.gamesystem.record.GameRecord;
 import betachess.com.gamesystem.record.GameRecordStore;
 import betachess.com.gamesystem.record.PgnReader;
 import betachess.com.gamesystem.record.PgnWriter;
+import betachess.com.gamesystem.San;
 
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
@@ -151,6 +152,14 @@ public class ChessFrame extends JFrame implements GameView {
         JMenuItem openItem = new JMenuItem("Open saved game...");
         openItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(
                 java.awt.event.KeyEvent.VK_O, java.awt.event.InputEvent.CTRL_DOWN_MASK));
+        JMenuItem analyzeCurrentItem = new JMenuItem("Analyze current game...");
+        analyzeCurrentItem.addActionListener(e -> analyzeCurrentGame());
+
+        JMenuItem analyzePgnItem = new JMenuItem("Open & analyze PGN...");
+        analyzePgnItem.addActionListener(e -> openAndAnalyzePgn());
+
+        gameMenu.add(analyzeCurrentItem);
+        gameMenu.add(analyzePgnItem);
         openItem.addActionListener(e -> openSavedGame());
 
         gameMenu.add(localItem);
@@ -238,6 +247,59 @@ public class ChessFrame extends JFrame implements GameView {
         } catch (IOException ex) {
             showMessage("Could not save: " + ex.getMessage());
         }
+    }
+
+    private void analyzeCurrentGame() {
+        if (controller == null) return;
+        ChessGame game = controller.getGame();
+        if (game.getHistory().isEmpty()) {
+            showMessage("No moves to analyse yet.");
+            return;
+        }
+        String title = whiteName() + "  vs  " + blackName();
+        String sub   = "Result: " + game.getStatus()
+                + "   \u2022   Time: " + controller.getTimeControl().getLabel();
+        try {
+            AnalysisFrame frame = new AnalysisFrame(title, sub, game,
+                    EngineConfig.resolveExecutable());
+            frame.setVisible(true);
+        } catch (Exception ex) {
+            showMessage("Could not start analysis: " + ex.getMessage());
+        }
+    }
+
+    private void openAndAnalyzePgn() {
+        java.nio.file.Path path = GameRecordStore.promptForOpenPath(this);
+        if (path == null) return;
+        try {
+            GameRecord record = PgnReader.read(path);
+            ChessGame replay = new ChessGame();
+            for (GameRecord.Ply ply : record.getPlies()) {
+                Move m = findMoveForSan(replay, ply.getSan());
+                if (m == null) break;
+                replay.makeMove(m);
+            }
+            String title = record.getTag("White") + "  vs  " + record.getTag("Black");
+            String sub   = "Result: " + record.getResult();
+            AnalysisFrame frame = new AnalysisFrame(title, sub, replay,
+                    EngineConfig.resolveExecutable());
+            frame.setVisible(true);
+        } catch (Exception ex) {
+            showMessage("Could not open file: " + ex.getMessage());
+        }
+    }
+
+    private static Move findMoveForSan(ChessGame game, String san) {
+        String target = san.replace("/", "=")
+                .replace("0-0-0", "O-O-O")
+                .replace("0-0", "O-O")
+                .replaceAll("[+#!?]+", "");
+        for (Move move : game.getLegalMoves()) {
+            if (San.of(game.getBoard(), move).replaceAll("[+#!?]+", "").equals(target)) {
+                return move;
+            }
+        }
+        return null;
     }
 
     private void openSavedGame() {

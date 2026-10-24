@@ -137,6 +137,19 @@ public class BoardPanel extends JPanel {
     public boolean hasAnnotations() {
         return !arrows.isEmpty() || !highlights.isEmpty();
     }
+    /** Programmatic arrow (analysis / game review). */
+    public void addArrow(Position from, Position to, java.awt.Color color) {
+        if (from == null || to == null || from.equals(to)) return;
+        arrows.add(new Arrow(from, to, color));
+        repaint();
+    }
+
+    /** Removes every arrow, keeping square highlights. */
+    public void clearArrows() {
+        if (arrows.isEmpty()) return;
+        arrows.clear();
+        repaint();
+    }
 
     // ------------------------------------------------------------------ input
 

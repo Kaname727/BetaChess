@@ -18,6 +18,7 @@ public enum PieceType {
         this.letter = letter;
     }
 
+    public static PieceType fromLetter(char c) { for (PieceType t : values()) if (t.letter() == c) return t; return null; }
     /** Lower case letter used by UCI notation and file names. */
     public char letter() {
         return letter;

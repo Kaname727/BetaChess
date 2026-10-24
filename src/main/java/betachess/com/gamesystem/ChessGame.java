@@ -2,6 +2,7 @@ package betachess.com.gamesystem;
 
 import betachess.com.piece.Piece;
 import betachess.com.piece.PieceColor;
+import betachess.com.piece.PieceFactory;
 import betachess.com.piece.PieceType;
 
 import java.util.ArrayList;
@@ -45,6 +46,7 @@ public final class ChessGame {
         refreshStatus();
         fireGameChanged();
     }
+
 
     public Board getBoard() {
         return board;
@@ -177,6 +179,39 @@ public final class ChessGame {
         status = result;
         fireGameChanged();
         fireGameFinished();
+    }
+
+    public static ChessGame fromFen(String fen) {
+        try {
+            String[] parts = fen.trim().split("\\s+");
+            ChessGame g = new ChessGame();
+            Board b = new Board();
+            int rank = 7;
+            int file = 0;
+            for (char c : parts[0].toCharArray()) {
+                if (c == '/') { rank--; file = 0; }
+                else if (Character.isDigit(c)) file += c - '0';
+                else {
+                    PieceColor color = Character.isUpperCase(c) ? PieceColor.WHITE : PieceColor.BLACK;
+                    PieceType type = PieceType.fromLetter(Character.toLowerCase(c));
+                    b.set(Position.of(file, rank), PieceFactory.create(type, color));
+                    file++;
+                }
+            }
+            g.board = b;
+            g.sideToMove = "b".equals(parts[1]) ? PieceColor.BLACK : PieceColor.WHITE;
+            g.castlingRights = new CastlingRights();
+            if (!parts[2].contains("K")) g.castlingRights.revoke(PieceColor.WHITE, true);
+            if (!parts[2].contains("Q")) g.castlingRights.revoke(PieceColor.WHITE, false);
+            if (!parts[2].contains("k")) g.castlingRights.revoke(PieceColor.BLACK, true);
+            if (!parts[2].contains("q")) g.castlingRights.revoke(PieceColor.BLACK, false);
+            g.enPassantTarget = parts[3].equals("-") ? null : Position.of(parts[3]);
+            g.halfmoveClock   = Integer.parseInt(parts[4]);
+            g.fullmoveNumber  = Integer.parseInt(parts[5]);
+            return g;
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     // ------------------------------------------------------------- internals

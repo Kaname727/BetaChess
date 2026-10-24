@@ -69,6 +69,65 @@ public final class UciEngine implements AutoCloseable {
         send("go depth " + depth);
     }
 
+    public static final class BlockingResult {
+        public final String          bestMoveUci;
+        public final EngineEvaluation evaluation;
+        BlockingResult(String bestMoveUci, EngineEvaluation evaluation) {
+            this.bestMoveUci = bestMoveUci;
+            this.evaluation  = evaluation;
+        }
+    }
+
+    private final Object blockingMonitor = new Object();
+    private volatile BlockingResult blockingResult;
+
+    /**
+     * Synchronous analysis: sends "go depth N", waits for bestmove, returns
+     * both the best move and the deepest eval seen. Must not be called while
+     * other listeners are in use on the same instance.
+     */
+    public BlockingResult analyzeBlocking(String fen, int depth) throws InterruptedException {
+        synchronized (blockingMonitor) {
+            blockingResult = null;
+        }
+
+        final EngineEvaluation[] latest = { null };
+        InfoListener   oldInfo = this.infoListener;
+        EngineListener oldMove = this.moveListener;
+
+        this.infoListener = line -> {
+            EngineEvaluation e = UciInfoParser.parse(line);
+            if (e != null) {
+                EngineEvaluation previous = latest[0];
+                if (previous == null || e.getDepth() >= previous.getDepth()) {
+                    latest[0] = e;
+                }
+            }
+        };
+        this.moveListener = uci -> {
+            synchronized (blockingMonitor) {
+                blockingResult = new BlockingResult(uci, latest[0]);
+                blockingMonitor.notifyAll();
+            }
+        };
+
+        try {
+            send("position fen " + fen);
+            send("go depth " + depth);
+
+            long deadline = System.currentTimeMillis() + 120_000L;
+            synchronized (blockingMonitor) {
+                while (blockingResult == null && System.currentTimeMillis() < deadline) {
+                    blockingMonitor.wait(100);
+                }
+            }
+            return blockingResult;
+        } finally {
+            this.infoListener = oldInfo;
+            this.moveListener = oldMove;
+        }
+    }
+
     /** Sends position + go movetime; used by the playing EnginePlayer. */
     public void go(String fen) {
         currentSearchId = searchId.incrementAndGet();
